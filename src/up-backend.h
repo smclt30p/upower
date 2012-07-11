@@ -59,6 +59,7 @@ typedef struct
 	void		(* device_removed)	(UpBackend	*backend,
 						 GObject	*native,
 						 UpDevice	*device);
+	void		(* resuming)		(UpBackend	*backend);
 } UpBackendClass;
 
 GType		 up_backend_get_type			(void);
@@ -75,6 +76,7 @@ const gchar	*up_backend_get_suspend_command		(UpBackend	*backend);
 const gchar	*up_backend_get_hibernate_command	(UpBackend	*backend);
 const gchar	*up_backend_get_powersave_command	(UpBackend	*backend,
 							 gboolean	 powersave);
+gboolean	 up_backend_emits_resuming		(UpBackend	*backend);
 
 G_END_DECLS
 

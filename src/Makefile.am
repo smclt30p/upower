@@ -122,7 +122,13 @@ upowerd_LDADD += 						\
 	linux/libupshared.la					\
 	$(USB_LIBS)						\
 	$(GUDEV_LIBS)						\
-	$(IDEVICE_LIBS)
+	$(IDEVICE_LIBS)						\
+	$(SYSTEMD_LIBS)
+
+if HAVE_SYSTEMDUTILDIR
+systemsleepdir = $(systemdutildir)/system-sleep
+systemsleep_SCRIPTS = notify-upower.sh
+endif
 
 if UP_BUILD_TESTS
 DBUS_LAUNCH=$(shell which dbus-launch)
@@ -196,7 +202,7 @@ dbusconf_DATA = $(dbusconf_in_files:.conf.in=.conf)
 $(dbusconf_DATA): $(dbusconf_in_files) Makefile
 	cp $< $@
 
-if HAVE_SYSTEMD
+if HAVE_SYSTEMDSYSTEMUNITDIR
 systemdservicedir       = $(systemdsystemunitdir)
 systemdservice_in_files = upower.service.in
 systemdservice_DATA     = $(systemdservice_in_files:.service.in=.service)

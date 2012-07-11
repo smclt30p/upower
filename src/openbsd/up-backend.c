@@ -205,6 +205,12 @@ up_backend_get_hibernate_command (UpBackend *backend)
 	return NULL;
 }
 
+gboolean
+up_backend_emits_resuming (UpBackend *backend)
+{
+	return FALSE;
+}
+
 /**
  * up_backend_kernel_can_suspend:
  **/

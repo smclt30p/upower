@@ -380,7 +380,39 @@ typedef struct {
 	UpDaemon		*daemon;
 	DBusGMethodInvocation	*context;
 	gchar			*command;
+	gulong			 handler;
 } UpDaemonDeferredSleep;
+
+static void
+emit_resuming (UpDaemonDeferredSleep *sleep)
+{
+	UpDaemon *daemon = sleep->daemon;
+	UpDaemonPrivate *priv = daemon->priv;
+
+	/* emit signal for session components */
+	g_debug ("emitting resuming");
+	g_signal_emit (daemon, signals[SIGNAL_RESUMING], 0);
+	g_signal_emit (daemon, signals[SIGNAL_NOTIFY_RESUME], 0,
+		       priv->sleep_kind);
+
+	/* reset the about-to-sleep logic */
+	g_timer_reset (priv->about_to_sleep_timer);
+	g_timer_stop (priv->about_to_sleep_timer);
+
+	/* actually return from the DBus call now */
+	dbus_g_method_return (sleep->context, NULL);
+
+	/* clear timer */
+	priv->about_to_sleep_id = 0;
+	priv->sent_sleeping_signal = FALSE;
+
+	/* delete temp object */
+	if (sleep->handler)
+		g_signal_handler_disconnect (priv->backend, sleep->handler);
+	g_object_unref (sleep->daemon);
+	g_free (sleep->command);
+	g_free (sleep);
+}
 
 /**
  * up_daemon_deferred_sleep_cb:
@@ -396,7 +428,13 @@ up_daemon_deferred_sleep_cb (UpDaemonDeferredSleep *sleep)
 	UpDaemon *daemon = sleep->daemon;
 	UpDaemonPrivate *priv = daemon->priv;
 
+	if (up_backend_emits_resuming (priv->backend)) {
+		sleep->handler = g_signal_connect_swapped (priv->backend, "resuming",
+							   G_CALLBACK (emit_resuming), sleep);
+	}
+
 	/* run the command */
+	g_debug ("Running %s", sleep->command);
 	ret = g_spawn_command_line_sync (sleep->command, &stdout, &stderr, NULL, &error_local);
 	if (!ret) {
 		error = g_error_new (UP_DAEMON_ERROR,
@@ -408,31 +446,12 @@ up_daemon_deferred_sleep_cb (UpDaemonDeferredSleep *sleep)
 		goto out;
 	}
 
-	/* emit signal for session components */
-	g_debug ("emitting resuming");
-	g_signal_emit (daemon, signals[SIGNAL_RESUMING], 0);
-	g_signal_emit (daemon, signals[SIGNAL_NOTIFY_RESUME], 0,
-		       priv->sleep_kind);
-
-	/* reset the about-to-sleep logic */
-	g_timer_reset (priv->about_to_sleep_timer);
-	g_timer_stop (priv->about_to_sleep_timer);
-
-	/* actually return from the DBus call now */
-	dbus_g_method_return (sleep->context, NULL);
+	if (!up_backend_emits_resuming (priv->backend))
+		emit_resuming (sleep);
 
 out:
-	/* clear timer */
-	priv->about_to_sleep_id = 0;
-	priv->sent_sleeping_signal = FALSE;
-
 	g_free (stdout);
 	g_free (stderr);
-
-	/* delete temp object */
-	g_object_unref (sleep->daemon);
-	g_free (sleep->command);
-	g_free (sleep);
 
 	return FALSE;
 }

@@ -297,3 +297,9 @@ up_backend_get_powersave_command (UpBackend *backend, gboolean powersave)
 {
 	return "/bin/true";
 }
+
+gboolean
+up_backend_emits_resuming (UpBackend *backend)
+{
+	return FALSE;
+}

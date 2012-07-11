@@ -176,6 +176,55 @@ fi
 
 PKG_CHECK_MODULES(GIO, [gio-2.0 >= 2.16.1])
 
+dnl ====================================================================
+dnl Check for systemd
+dnl ====================================================================
+AC_ARG_ENABLE([systemd],
+              AS_HELP_STRING([--enable-systemd], [Use systemd]),
+              [enable_systemd=$enableval],
+              [enable_systemd=auto])
+
+PKG_CHECK_MODULES(SYSTEMD,
+                  [libsystemd-daemon],
+                  [have_systemd=yes], [have_systemd=no])
+
+AC_MSG_CHECKING([whether to use systemd])
+
+if test x$enable_systemd = xauto ; then
+        if test x$have_systemd = xno ; then
+                enable_systemd=no
+        else
+                enable_systemd=yes
+        fi
+fi
+AC_MSG_RESULT($enable_systemd)
+
+if test x$enable_systemd = xyes; then
+        if test x$have_systemd = xno; then
+                AC_MSG_ERROR([Systemd support explicitly required, but systemd not found])
+        fi
+        AC_DEFINE(HAVE_SYSTEMD, 1, [Define if systemd is used for session tracking])
+fi
+
+AC_SUBST(SYSTEMD_CFLAGS)
+AC_SUBST(SYSTEMD_LIBS)
+
+AM_CONDITIONAL(HAVE_SYSTEMD, [test "$with_systemd" = "yes"], [Using systemd])
+
+AC_ARG_WITH([systemdutildir],
+            AS_HELP_STRING([--with-systemdutildir=DIR], [Directory for systemd utilities]),
+            [],
+            [with_systemdutildir=$($PKG_CONFIG --variable=systemdutildir systemd)])
+AC_SUBST([systemdutildir], [$with_systemdutildir])
+AM_CONDITIONAL(HAVE_SYSTEMDUTILDIR, [test -n "$with_systemdutildir"])
+
+AC_ARG_WITH([systemdsystemunitdir],
+            AS_HELP_STRING([--with-systemdsystemunitdir=DIR], [Directory for systemd service files]),
+            [],
+            [with_systemdsystemunitdir=$($PKG_CONFIG --variable=systemdsystemunitdir systemd)])
+AC_SUBST([systemdsystemunitdir], [$with_systemdsystemunitdir])
+AM_CONDITIONAL(HAVE_SYSTEMDSYSTEMUNITDIR, [test -n "$with_systemdsystemunitdir"])
+
 dnl ---------------------------------------------------------------------------
 dnl - Compile time default choice of backend
 dnl ---------------------------------------------------------------------------
@@ -209,14 +258,6 @@ if test x$with_backend = xlinux; then
 fi
 
 AM_CONDITIONAL(HAVE_IDEVICE, [test x$have_idevice = xyes])
-
-# systemd
-AC_ARG_WITH([systemdsystemunitdir],
-            AS_HELP_STRING([--with-systemdsystemunitdir=DIR], [Directory for systemd service files]),
-            [],
-            [with_systemdsystemunitdir=$($PKG_CONFIG --variable=systemdsystemunitdir systemd)])
-AC_SUBST([systemdsystemunitdir], [$with_systemdsystemunitdir])
-AM_CONDITIONAL(HAVE_SYSTEMD, [test -n "$with_systemdsystemunitdir"])
 
 # export to Makefile.am
 AM_CONDITIONAL(BACKEND_TYPE_DUMMY, [test x$with_backend = xdummy])

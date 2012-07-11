@@ -12,7 +12,8 @@ INCLUDES = \
 	$(GUDEV_CFLAGS)						\
 	$(POLKIT_CFLAGS)					\
 	$(GLIB_CFLAGS)						\
-	$(IDEVICE_CFLAGS)
+	$(IDEVICE_CFLAGS)					\
+	$(SYSTEMD_CFLAGS)
 
 if BACKEND_TYPE_LINUX
 noinst_LTLIBRARIES = libupshared.la
