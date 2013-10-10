@@ -320,8 +320,6 @@ up_wakeups_init (UpWakeups *wakeups)
 	GError *error = NULL;
 
 	wakeups->priv = UP_WAKEUPS_GET_PRIVATE (wakeups);
-	wakeups->priv->has_capability = FALSE;
-	wakeups->priv->have_properties = FALSE;
 
 	/* get on the bus */
 	wakeups->priv->bus = dbus_g_bus_get (DBUS_BUS_SYSTEM, &error);

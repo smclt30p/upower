@@ -1294,9 +1294,6 @@ static void
 up_device_init (UpDevice *device)
 {
 	device->priv = UP_DEVICE_GET_PRIVATE (device);
-	device->priv->object_path = NULL;
-	device->priv->proxy_device = NULL;
-	device->priv->proxy_props = NULL;
 }
 
 /*

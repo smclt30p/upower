@@ -333,9 +333,6 @@ static void
 up_history_item_init (UpHistoryItem *history_item)
 {
 	history_item->priv = UP_HISTORY_ITEM_GET_PRIVATE (history_item);
-	history_item->priv->value = 0.0f;
-	history_item->priv->time = 0;
-	history_item->priv->state = UP_DEVICE_STATE_UNKNOWN;
 }
 
 /**

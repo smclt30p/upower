@@ -206,8 +206,6 @@ static void
 up_stats_item_init (UpStatsItem *stats_item)
 {
 	stats_item->priv = UP_STATS_ITEM_GET_PRIVATE (stats_item);
-	stats_item->priv->value = 0.0f;
-	stats_item->priv->accuracy = 0.0f;
 }
 
 /**

@@ -571,8 +571,6 @@ up_client_init (UpClient *client)
 
 	client->priv = UP_CLIENT_GET_PRIVATE (client);
 	client->priv->array = g_ptr_array_new_with_free_func ((GDestroyNotify) g_object_unref);
-	client->priv->have_properties = FALSE;
-	client->priv->done_enumerate = FALSE;
 
 	/* connect to main interface */
 	client->priv->proxy = up_client_glue_proxy_new_for_bus_sync (G_BUS_TYPE_SYSTEM,
