@@ -389,7 +389,7 @@ up_device_refresh_sync (UpDevice *device, GCancellable *cancellable, GError **er
  *
  * Gets the device history.
  *
- * Return value: (transfer full): an array of #UpHistoryItem's, with the most
+ * Return value: (element-type UpHistoryItem) (transfer full): an array of #UpHistoryItem's, with the most
  *               recent one being first; %NULL if @error is set or @device is
  *               invalid
  *
@@ -471,7 +471,7 @@ out:
  *
  * Gets the device current statistics.
  *
- * Return value: (transfer full): an array of #UpStatsItem's, else #NULL and @error is used
+ * Return value: (element-type UpStatsItem) (transfer full): an array of #UpStatsItem's, else #NULL and @error is used
  *
  * Since: 0.9.0
  **/

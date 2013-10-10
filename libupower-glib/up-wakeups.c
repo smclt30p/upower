@@ -85,7 +85,7 @@ up_wakeups_get_total_sync (UpWakeups *wakeups, GCancellable *cancellable, GError
  *
  * Gets the wakeups data from the daemon.
  *
- * Return value: (transfer full): an array of %UpWakeupItem's
+ * Return value: (element-type UpWakeupItem) (transfer full): an array of %UpWakeupItem's
  *
  * Since: 0.9.1
  **/
