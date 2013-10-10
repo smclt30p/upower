@@ -1,6 +1,7 @@
 AM_CPPFLAGS = \
 	$(GLIB_CFLAGS)						\
 	$(DBUS_GLIB_CFLAGS)					\
+	$(GIO_UNIX_CFLAGS)					\
 	-I$(top_builddir)					\
 	-I$(top_srcdir)						\
 	-I$(top_srcdir)/libupower-glib				\
@@ -74,11 +75,15 @@ libupower_glib_la_SOURCES =					\
 	up-wakeup-item.c					\
 	up-stats-item.c						\
 	up-history-item.c					\
-	up-device.c
+	up-device.c						\
+	$(up_client_dbus_built_sources)				\
+	$(up_device_dbus_built_sources)				\
+	$(up_wakeups_dbus_built_sources)
 
 libupower_glib_la_LIBADD =					\
 	$(INTLLIBS)						\
 	$(GLIB_LIBS)						\
+	$(GIO_UNIX_LIBS)					\
 	$(DBUS_GLIB_LIBS)
 
 libupower_glib_la_LDFLAGS =					\
