@@ -33,10 +33,10 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <glib.h>
-#include <dbus/dbus-glib.h>
+#include <glib-object.h>
 
 #include "up-client.h"
+#include "up-client-glue.h"
 #include "up-device.h"
 
 static void	up_client_class_init	(UpClientClass	*klass);
@@ -52,17 +52,8 @@ static void	up_client_finalize	(GObject	*object);
  **/
 struct _UpClientPrivate
 {
-	DBusGConnection		*bus;
-	DBusGProxy		*proxy;
-	DBusGProxy		*prop_proxy;
+	UpClientGlue		*proxy;
 	GPtrArray		*array;
-	gboolean		 have_properties;
-	gchar			*daemon_version;
-	gboolean		 lid_is_closed;
-	gboolean		 on_battery;
-	gboolean		 on_low_battery;
-	gboolean		 lid_is_present;
-	gboolean		 is_docked;
 	gboolean		 done_enumerate;
 };
 
@@ -130,32 +121,6 @@ up_client_get_devices (UpClient *client)
 	return g_ptr_array_ref (client->priv->array);
 }
 
-/*
- * up_client_get_devices_private:
- */
-static GPtrArray *
-up_client_get_devices_private (UpClient *client, GError **error)
-{
-	gboolean ret;
-	GError *error_local = NULL;
-	GPtrArray *devices = NULL;
-	GType g_type_array;
-
-	if (!client->priv->proxy)
-		return NULL;
-	g_type_array = dbus_g_type_get_collection ("GPtrArray", DBUS_TYPE_G_OBJECT_PATH);
-	ret = dbus_g_proxy_call (client->priv->proxy, "EnumerateDevices", &error_local,
-				 G_TYPE_INVALID,
-				 g_type_array, &devices,
-				 G_TYPE_INVALID);
-	if (!ret) {
-		g_warning ("Couldn't enumerate devices: %s", error_local->message);
-		g_set_error (error, 1, 0, "%s", error_local->message);
-		g_error_free (error_local);
-	}
-	return devices;
-}
-
 /**
  * up_client_get_properties_sync:
  * @client: a #UpClient instance.
@@ -171,98 +136,9 @@ up_client_get_devices_private (UpClient *client, GError **error)
 gboolean
 up_client_get_properties_sync (UpClient *client, GCancellable *cancellable, GError **error)
 {
-	gboolean ret = TRUE;
-	gboolean prop_val;
-	GHashTable *props;
-	GValue *value;
-
-	props = NULL;
-
-	if (client->priv->have_properties)
-		goto out;
-	if (!client->priv->prop_proxy)
-		goto out;
-
-	if (error != NULL)
-		*error = NULL;
-	ret = dbus_g_proxy_call (client->priv->prop_proxy, "GetAll", error,
-				 G_TYPE_STRING, "org.freedesktop.UPower",
-				 G_TYPE_INVALID,
-				 dbus_g_type_get_map ("GHashTable", G_TYPE_STRING, G_TYPE_VALUE), &props,
-				 G_TYPE_INVALID);
-	if (!ret)
-		goto out;
-
-	value = g_hash_table_lookup (props, "DaemonVersion");
-	if (value == NULL) {
-		g_warning ("No 'DaemonVersion' property");
-		goto out;
-	}
-	g_free (client->priv->daemon_version);
-	client->priv->daemon_version = g_strdup (g_value_get_string (value));
-
-	value = g_hash_table_lookup (props, "LidIsClosed");
-	if (value == NULL) {
-		g_warning ("No 'LidIsClosed' property");
-		goto out;
-	}
-	prop_val = g_value_get_boolean (value);
-	if (prop_val != client->priv->lid_is_closed) {
-		client->priv->lid_is_closed = prop_val;
-		g_object_notify (G_OBJECT(client), "lid-is-closed");
-	}
-
-	value = g_hash_table_lookup (props, "OnBattery");
-	if (value == NULL) {
-		g_warning ("No 'OnBattery' property");
-		goto out;
-	}
-	prop_val = g_value_get_boolean (value);
-	if (prop_val != client->priv->on_battery) {
-		client->priv->on_battery = prop_val;
-		g_object_notify (G_OBJECT(client), "on-battery");
-	}
-
-	value = g_hash_table_lookup (props, "OnLowBattery");
-	if (value == NULL) {
-		g_warning ("No 'OnLowBattery' property");
-		goto out;
-	}
-	prop_val = g_value_get_boolean (value);
-	if (prop_val != client->priv->on_low_battery) {
-		client->priv->on_low_battery = prop_val;
-		g_object_notify (G_OBJECT(client), "on-low-battery");
-	}
-
-	value = g_hash_table_lookup (props, "LidIsPresent");
-	if (value == NULL) {
-		g_warning ("No 'LidIsPresent' property");
-		goto out;
-	}
-	prop_val = g_value_get_boolean (value);
-	if (prop_val != client->priv->lid_is_present) {
-		client->priv->lid_is_present = prop_val;
-		g_object_notify (G_OBJECT(client), "lid-is-present");
-	}
-
-	value = g_hash_table_lookup (props, "IsDocked");
-	if (value == NULL) {
-		g_warning ("No 'IsDocked' property");
-		goto out;
-	}
-	prop_val = g_value_get_boolean (value);
-	if (prop_val != client->priv->is_docked) {
-		client->priv->is_docked = prop_val;
-		g_object_notify (G_OBJECT(client), "is-docked");
-	}
-
-	/* cached */
-	client->priv->have_properties = TRUE;
-
-out:
-	if (props != NULL)
-		g_hash_table_unref (props);
-	return ret;
+	/* This is not needed now that we used GDBus */
+	g_return_val_if_fail (UP_IS_CLIENT (client), FALSE);
+	return TRUE;
 }
 
 /**
@@ -279,8 +155,7 @@ const gchar *
 up_client_get_daemon_version (UpClient *client)
 {
 	g_return_val_if_fail (UP_IS_CLIENT (client), NULL);
-	up_client_get_properties_sync (client, NULL, NULL);
-	return client->priv->daemon_version;
+	return up_client_glue_get_daemon_version (client->priv->proxy);
 }
 
 /**
@@ -297,8 +172,7 @@ gboolean
 up_client_get_lid_is_closed (UpClient *client)
 {
 	g_return_val_if_fail (UP_IS_CLIENT (client), FALSE);
-	up_client_get_properties_sync (client, NULL, NULL);
-	return client->priv->lid_is_closed;
+	return up_client_glue_get_lid_is_closed (client->priv->proxy);
 }
 
 /**
@@ -315,8 +189,7 @@ gboolean
 up_client_get_lid_is_present (UpClient *client)
 {
 	g_return_val_if_fail (UP_IS_CLIENT (client), FALSE);
-	up_client_get_properties_sync (client, NULL, NULL);
-	return client->priv->lid_is_present;
+	return up_client_glue_get_lid_is_present (client->priv->proxy);
 }
 
 /**
@@ -333,8 +206,7 @@ gboolean
 up_client_get_is_docked (UpClient *client)
 {
 	g_return_val_if_fail (UP_IS_CLIENT (client), FALSE);
-	up_client_get_properties_sync (client, NULL, NULL);
-	return client->priv->is_docked;
+	return up_client_glue_get_is_docked (client->priv->proxy);
 }
 
 /**
@@ -351,8 +223,7 @@ gboolean
 up_client_get_on_battery (UpClient *client)
 {
 	g_return_val_if_fail (UP_IS_CLIENT (client), FALSE);
-	up_client_get_properties_sync (client, NULL, NULL);
-	return client->priv->on_battery;
+	return up_client_glue_get_on_battery (client->priv->proxy);
 }
 
 /**
@@ -369,8 +240,7 @@ gboolean
 up_client_get_on_low_battery (UpClient *client)
 {
 	g_return_val_if_fail (UP_IS_CLIENT (client), FALSE);
-	up_client_get_properties_sync (client, NULL, NULL);
-	return client->priv->on_low_battery;
+	return up_client_glue_get_on_low_battery (client->priv->proxy);
 }
 
 /*
@@ -408,7 +278,7 @@ out:
  * up_client_added_cb:
  */
 static void
-up_device_added_cb (DBusGProxy *proxy, const gchar *object_path, UpClient *client)
+up_device_added_cb (UpClientGlue *proxy, const gchar *object_path, UpClient *client)
 {
 	up_client_add (client, object_path);
 }
@@ -417,7 +287,7 @@ up_device_added_cb (DBusGProxy *proxy, const gchar *object_path, UpClient *clien
  * up_client_changed_cb:
  */
 static void
-up_device_changed_cb (DBusGProxy *proxy, const gchar *object_path, UpClient *client)
+up_device_changed_cb (UpClientGlue *proxy, const gchar *object_path, UpClient *client)
 {
 	UpDevice *device;
 	device = up_client_get_device (client, object_path);
@@ -429,7 +299,7 @@ up_device_changed_cb (DBusGProxy *proxy, const gchar *object_path, UpClient *cli
  * up_client_removed_cb:
  */
 static void
-up_device_removed_cb (DBusGProxy *proxy, const gchar *object_path, UpClient *client)
+up_device_removed_cb (UpClientGlue *proxy, const gchar *object_path, UpClient *client)
 {
 	UpDevice *device;
 	device = up_client_get_device (client, object_path);
@@ -443,9 +313,8 @@ up_device_removed_cb (DBusGProxy *proxy, const gchar *object_path, UpClient *cli
  * up_client_changed_cb:
  */
 static void
-up_client_changed_cb (DBusGProxy *proxy, UpClient *client)
+up_client_changed_cb (UpClientGlue *proxy, UpClient *client)
 {
-	client->priv->have_properties = FALSE;
 	g_signal_emit (client, signals [UP_CLIENT_CHANGED], 0);
 }
 
@@ -462,22 +331,22 @@ up_client_get_property (GObject *object,
 
 	switch (prop_id) {
 	case PROP_DAEMON_VERSION:
-		g_value_set_string (value, client->priv->daemon_version);
+		g_value_set_string (value, up_client_glue_get_daemon_version (client->priv->proxy));
 		break;
 	case PROP_ON_BATTERY:
-		g_value_set_boolean (value, client->priv->on_battery);
+		g_value_set_boolean (value, up_client_glue_get_on_battery (client->priv->proxy));
 		break;
 	case PROP_ON_LOW_BATTERY:
-		g_value_set_boolean (value, client->priv->on_low_battery);
+		g_value_set_boolean (value, up_client_glue_get_on_low_battery (client->priv->proxy));
 		break;
 	case PROP_LID_IS_CLOSED:
-		g_value_set_boolean (value, client->priv->lid_is_closed);
+		g_value_set_boolean (value, up_client_glue_get_lid_is_closed (client->priv->proxy));
 		break;
 	case PROP_LID_IS_PRESENT:
-		g_value_set_boolean (value, client->priv->lid_is_present);
+		g_value_set_boolean (value, up_client_glue_get_lid_is_present (client->priv->proxy));
 		break;
 	case PROP_IS_DOCKED:
-		g_value_set_boolean (value, client->priv->is_docked);
+		g_value_set_boolean (value, up_client_glue_get_is_docked (client->priv->proxy));
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -664,7 +533,7 @@ gboolean
 up_client_enumerate_devices_sync (UpClient *client, GCancellable *cancellable, GError **error)
 {
 	const gchar *object_path;
-	GPtrArray *devices;
+	char **devices;
 	guint i;
 	gboolean ret = TRUE;
 
@@ -673,13 +542,15 @@ up_client_enumerate_devices_sync (UpClient *client, GCancellable *cancellable, G
 		goto out;
 
 	/* coldplug */
-	devices = up_client_get_devices_private (client, error);
-	if (devices == NULL) {
+	if (up_client_glue_call_enumerate_devices_sync (client->priv->proxy,
+							&devices,
+							NULL,
+							error) == FALSE) {
 		ret = FALSE;
 		goto out;
 	}
-	for (i=0; i<devices->len; i++) {
-		object_path = (const gchar *) g_ptr_array_index (devices, i);
+	for (i = 0; devices[i] != NULL; i++) {
+		object_path = (const gchar *) devices[i];
 		up_client_add (client, object_path);
 	}
 
@@ -703,50 +574,28 @@ up_client_init (UpClient *client)
 	client->priv->have_properties = FALSE;
 	client->priv->done_enumerate = FALSE;
 
-	/* get on the bus */
-	client->priv->bus = dbus_g_bus_get (DBUS_BUS_SYSTEM, &error);
-	if (client->priv->bus == NULL) {
-		g_warning ("Couldn't connect to system bus: %s", error->message);
-		g_error_free (error);
-		goto out;
-	}
-
 	/* connect to main interface */
-	client->priv->proxy = dbus_g_proxy_new_for_name (client->priv->bus,
-							 "org.freedesktop.UPower",
-							 "/org/freedesktop/UPower",
-							 "org.freedesktop.UPower");
+	client->priv->proxy = up_client_glue_proxy_new_for_bus_sync (G_BUS_TYPE_SYSTEM,
+								     G_DBUS_PROXY_FLAGS_NONE,
+								     "org.freedesktop.UPower",
+								     "/org/freedesktop/UPower",
+								     NULL,
+								     &error);
 	if (client->priv->proxy == NULL) {
-		g_warning ("Couldn't connect to proxy");
-		goto out;
+		g_warning ("Couldn't connect to proxy: %s", error->message);
+		g_error_free (error);
+		return;
 	}
-
-	/* connect to properties interface */
-	client->priv->prop_proxy = dbus_g_proxy_new_for_name (client->priv->bus,
-							      "org.freedesktop.UPower",
-							      "/org/freedesktop/UPower",
-							      "org.freedesktop.DBus.Properties");
-	if (client->priv->prop_proxy == NULL) {
-		g_warning ("Couldn't connect to proxy");
-		goto out;
-	}
-
-	dbus_g_proxy_add_signal (client->priv->proxy, "DeviceAdded", G_TYPE_STRING, G_TYPE_INVALID);
-	dbus_g_proxy_add_signal (client->priv->proxy, "DeviceRemoved", G_TYPE_STRING, G_TYPE_INVALID);
-	dbus_g_proxy_add_signal (client->priv->proxy, "DeviceChanged", G_TYPE_STRING, G_TYPE_INVALID);
-	dbus_g_proxy_add_signal (client->priv->proxy, "Changed", G_TYPE_INVALID);
 
 	/* all callbacks */
-	dbus_g_proxy_connect_signal (client->priv->proxy, "DeviceAdded",
-				     G_CALLBACK (up_device_added_cb), client, NULL);
-	dbus_g_proxy_connect_signal (client->priv->proxy, "DeviceRemoved",
-				     G_CALLBACK (up_device_removed_cb), client, NULL);
-	dbus_g_proxy_connect_signal (client->priv->proxy, "DeviceChanged",
-				     G_CALLBACK (up_device_changed_cb), client, NULL);
-	dbus_g_proxy_connect_signal (client->priv->proxy, "Changed",
-				     G_CALLBACK (up_client_changed_cb), client, NULL);
-out:
-	return;
+	g_signal_connect (client->priv->proxy, "device-added",
+			  G_CALLBACK (up_device_added_cb), client);
+	g_signal_connect (client->priv->proxy, "device-removed",
+			  G_CALLBACK (up_device_removed_cb), client);
+	g_signal_connect (client->priv->proxy, "device-changed",
+			  G_CALLBACK (up_device_changed_cb), client);
+	g_signal_connect (client->priv->proxy, "changed",
+			  G_CALLBACK (up_client_changed_cb), client);
 }
 
 /*
@@ -763,16 +612,8 @@ up_client_finalize (GObject *object)
 
 	g_ptr_array_unref (client->priv->array);
 
-	if (client->priv->bus)
-		dbus_g_connection_unref (client->priv->bus);
-
 	if (client->priv->proxy != NULL)
 		g_object_unref (client->priv->proxy);
-
-	if (client->priv->prop_proxy != NULL)
-		g_object_unref (client->priv->prop_proxy);
-
-	g_free (client->priv->daemon_version);
 
 	G_OBJECT_CLASS (up_client_parent_class)->finalize (object);
 }
