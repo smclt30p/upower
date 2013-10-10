@@ -86,9 +86,6 @@ struct _UpDevicePrivate
 	gint64			 time_to_full;		/* seconds */
 	gdouble			 percentage;		/* percent */
 	gdouble			 temperature;		/* degrees C */
-	gboolean		 recall_notice;
-	gchar			*recall_vendor;
-	gchar			*recall_url;
 };
 
 enum {
@@ -119,9 +116,6 @@ enum {
 	PROP_TIME_TO_FULL,
 	PROP_PERCENTAGE,
 	PROP_TEMPERATURE,
-	PROP_RECALL_NOTICE,
-	PROP_RECALL_VENDOR,
-	PROP_RECALL_URL,
 	PROP_LAST
 };
 
@@ -221,14 +215,6 @@ up_device_collect_props_cb (const char *key, const GValue *value, UpDevice *devi
 		device->priv->capacity = g_value_get_double (value);
 	} else if (g_strcmp0 (key, "State") == 0) {
 		device->priv->state = g_value_get_uint (value);
-	} else if (g_strcmp0 (key, "RecallNotice") == 0) {
-		device->priv->recall_notice = g_value_get_boolean (value);
-	} else if (g_strcmp0 (key, "RecallVendor") == 0) {
-		g_free (device->priv->recall_vendor);
-		device->priv->recall_vendor = g_strdup (g_value_get_string (value));
-	} else if (g_strcmp0 (key, "RecallUrl") == 0) {
-		g_free (device->priv->recall_url);
-		device->priv->recall_url = g_strdup (g_value_get_string (value));
 	} else {
 		g_warning ("unhandled property '%s'", key);
 	}
@@ -527,12 +513,6 @@ up_device_to_text (UpDevice *device)
 	}
 	if (device->priv->kind == UP_DEVICE_KIND_LINE_POWER)
 		g_string_append_printf (string, "    online:             %s\n", up_device_bool_to_string (device->priv->online));
-	if (device->priv->kind == UP_DEVICE_KIND_BATTERY) {
-		if (device->priv->recall_notice) {
-			g_string_append_printf (string, "    recall vendor:       %s\n", device->priv->recall_vendor);
-			g_string_append_printf (string, "    recall url:          %s\n", device->priv->recall_url);
-		}
-	}
 
 	/* if we can, get history */
 	if (device->priv->has_history) {
@@ -841,17 +821,6 @@ up_device_set_property (GObject *object, guint prop_id, const GValue *value, GPa
 	case PROP_TECHNOLOGY:
 		device->priv->technology = g_value_get_uint (value);
 		break;
-	case PROP_RECALL_NOTICE:
-		device->priv->recall_notice = g_value_get_boolean (value);
-		break;
-	case PROP_RECALL_VENDOR:
-		g_free (device->priv->recall_vendor);
-		device->priv->recall_vendor = g_strdup (g_value_get_string (value));
-		break;
-	case PROP_RECALL_URL:
-		g_free (device->priv->recall_url);
-		device->priv->recall_url = g_strdup (g_value_get_string (value));
-		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
 		break;
@@ -944,15 +913,6 @@ up_device_get_property (GObject *object, guint prop_id, GValue *value, GParamSpe
 		break;
 	case PROP_TEMPERATURE:
 		g_value_set_double (value, device->priv->temperature);
-		break;
-	case PROP_RECALL_NOTICE:
-		g_value_set_boolean (value, device->priv->recall_notice);
-		break;
-	case PROP_RECALL_VENDOR:
-		g_value_set_string (value, device->priv->recall_vendor);
-		break;
-	case PROP_RECALL_URL:
-		g_value_set_string (value, device->priv->recall_url);
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1323,47 +1283,6 @@ up_device_class_init (UpDeviceClass *klass)
 					 g_param_spec_double ("temperature", NULL, NULL,
 							      0.0, G_MAXDOUBLE, 0.0,
 							      G_PARAM_READWRITE));
-	/**
-	 * UpDevice:recall-notice:
-	 *
-	 * If the device may be recalled due to defect. NOTE: This property does
-	 * not mean the battery is broken, and just that the user should
-	 * _check_ with the vendor.
-	 *
-	 * Since: 0.9.0
-	 **/
-	g_object_class_install_property (object_class,
-					 PROP_RECALL_NOTICE,
-					 g_param_spec_boolean ("recall-notice",
-							       NULL, NULL,
-							       FALSE,
-							       G_PARAM_READWRITE));
-	/**
-	 * UpDevice:recall-vendor:
-	 *
-	 * The vendor that is recalling the device.
-	 *
-	 * Since: 0.9.0
-	 **/
-	g_object_class_install_property (object_class,
-					 PROP_RECALL_VENDOR,
-					 g_param_spec_string ("recall-vendor",
-							      NULL, NULL,
-							      NULL,
-							      G_PARAM_READWRITE));
-	/**
-	 * UpDevice:recall-url:
-	 *
-	 * The vendors internet link for the recalled device.
-	 *
-	 * Since: 0.9.0
-	 **/
-	g_object_class_install_property (object_class,
-					 PROP_RECALL_URL,
-					 g_param_spec_string ("recall-url",
-							      NULL, NULL,
-							      NULL,
-							      G_PARAM_READWRITE));
 
 	g_type_class_add_private (klass, sizeof (UpDevicePrivate));
 }
@@ -1397,8 +1316,6 @@ up_device_finalize (GObject *object)
 	g_free (device->priv->model);
 	g_free (device->priv->serial);
 	g_free (device->priv->native_path);
-	g_free (device->priv->recall_vendor);
-	g_free (device->priv->recall_url);
 	if (device->priv->proxy_device != NULL)
 		g_object_unref (device->priv->proxy_device);
 	if (device->priv->proxy_props != NULL)

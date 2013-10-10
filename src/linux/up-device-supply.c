@@ -505,9 +505,6 @@ up_device_supply_refresh_battery (UpDeviceSupply *supply)
 	gchar *manufacturer = NULL;
 	gchar *model_name = NULL;
 	gchar *serial_number = NULL;
-	gboolean recall_notice;
-	const gchar *recall_vendor = NULL;
-	const gchar *recall_url = NULL;
 	UpDaemon *daemon;
 	gboolean ac_online = FALSE;
 	gboolean has_ac = FALSE;
@@ -562,13 +559,6 @@ up_device_supply_refresh_battery (UpDeviceSupply *supply)
 		up_device_supply_make_safe_string (model_name);
 		up_device_supply_make_safe_string (serial_number);
 
-		/* are we possibly recalled by the vendor? */
-		recall_notice = g_udev_device_has_property (native, "UPOWER_RECALL_NOTICE");
-		if (recall_notice) {
-			recall_vendor = g_udev_device_get_property (native, "UPOWER_RECALL_VENDOR");
-			recall_url = g_udev_device_get_property (native, "UPOWER_RECALL_URL");
-		}
-
 		g_object_set (device,
 			      "vendor", manufacturer,
 			      "model", model_name,
@@ -576,9 +566,6 @@ up_device_supply_refresh_battery (UpDeviceSupply *supply)
 			      "is-rechargeable", TRUE, /* assume true for laptops */
 			      "has-history", TRUE,
 			      "has-statistics", TRUE,
-			      "recall-notice", recall_notice,
-			      "recall-vendor", recall_vendor,
-			      "recall-url", recall_url,
 			      NULL);
 
 		/* these don't change at runtime */

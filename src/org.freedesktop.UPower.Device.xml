@@ -684,45 +684,6 @@ method return sender=:1.386 -> dest=:1.477 reply_serial=2
       </doc:doc>
     </property>
 
-    <property name="RecallNotice" type="b" access="read">
-      <doc:doc>
-        <doc:description>
-          <doc:para>
-            If the device may have been recalled by the vendor due to a suspected
-            fault.
-            This key does not imply the device is faulty, only that it approximatly
-            matches the description from the vendor of units that were recalled.
-          </doc:para>
-        </doc:description>
-      </doc:doc>
-    </property>
-
-    <property name="RecallVendor" type="s" access="read">
-      <doc:doc>
-        <doc:description>
-          <doc:para>
-            The vendor that is handling the hardware recall.
-          </doc:para>
-          <doc:para>
-            This property is only valid if the property recall-notice is true.
-          </doc:para>
-        </doc:description>
-      </doc:doc>
-    </property>
-
-    <property name="RecallUrl" type="s" access="read">
-      <doc:doc>
-        <doc:description>
-          <doc:para>
-            The URL to visit about the hardware recall.
-          </doc:para>
-          <doc:para>
-            This property is only valid if the property recall-notice is true.
-          </doc:para>
-        </doc:description>
-      </doc:doc>
-    </property>
-
   </interface>
 
 </node>
