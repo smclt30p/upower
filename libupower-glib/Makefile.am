@@ -23,7 +23,6 @@ libupower_glib_include_HEADERS =				\
 	up-version.h						\
 	up-types.h						\
 	up-device.h						\
-	up-qos-item.h						\
 	up-wakeup-item.h					\
 	up-stats-item.h						\
 	up-history-item.h					\
@@ -34,7 +33,6 @@ libupower_glib_la_SOURCES =					\
 	up-types.c						\
 	up-client.c						\
 	up-wakeups.c						\
-	up-qos-item.c						\
 	up-wakeup-item.c					\
 	up-stats-item.c						\
 	up-history-item.c					\

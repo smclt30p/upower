@@ -2,7 +2,7 @@
 
 ACLOCAL_AMFLAGS = -I m4 ${ACLOCAL_FLAGS}
 
-SUBDIRS = etc libupower-glib src doc tools policy po
+SUBDIRS = etc libupower-glib src doc tools po
 
 if BACKEND_TYPE_LINUX
 SUBDIRS += rules

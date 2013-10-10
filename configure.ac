@@ -250,7 +250,6 @@ doc/Makefile
 doc/version.xml
 doc/man/Makefile
 doc/dbus/Makefile
-policy/Makefile
 rules/Makefile
 libupower-glib/Makefile
 libupower-glib/up-version.h

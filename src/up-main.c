@@ -38,7 +38,6 @@
 #include <dbus/dbus-glib-lowlevel.h>
 
 #include "up-daemon.h"
-#include "up-qos.h"
 #include "up-kbd-backlight.h"
 #include "up-wakeups.h"
 
@@ -180,7 +179,6 @@ main (gint argc, gchar **argv)
 {
 	GError *error = NULL;
 	UpDaemon *daemon = NULL;
-	UpQos *qos = NULL;
 	UpKbdBacklight *kbd_backlight = NULL;
 	UpWakeups *wakeups = NULL;
 	GOptionContext *context;
@@ -280,7 +278,6 @@ main (gint argc, gchar **argv)
 
 	g_debug ("Starting upowerd version %s", PACKAGE_VERSION);
 
-	qos = up_qos_new ();
 	kbd_backlight = up_kbd_backlight_new ();
 	wakeups = up_wakeups_new ();
 	daemon = up_daemon_new ();
@@ -307,8 +304,6 @@ main (gint argc, gchar **argv)
 	g_main_loop_run (loop);
 	retval = 0;
 out:
-	if (qos != NULL)
-		g_object_unref (qos);
 	if (kbd_backlight != NULL)
 		g_object_unref (kbd_backlight);
 	if (wakeups != NULL)

@@ -38,7 +38,6 @@
 #include <libupower-glib/up-types.h>
 #include <libupower-glib/up-client.h>
 #include <libupower-glib/up-device.h>
-#include <libupower-glib/up-qos-item.h>
 #include <libupower-glib/up-history-item.h>
 #include <libupower-glib/up-stats-item.h>
 #include <libupower-glib/up-wakeup-item.h>

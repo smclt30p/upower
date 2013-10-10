@@ -33,7 +33,6 @@
 #include "up-history.h"
 #include "up-native.h"
 #include "up-polkit.h"
-#include "up-qos.h"
 #include "up-wakeups.h"
 
 gchar *history_dir = NULL;
@@ -301,24 +300,6 @@ up_test_polkit_func (void)
 }
 
 static void
-up_test_qos_func (void)
-{
-	UpQos *qos;
-
-	/* needs polkit, which only listens to the system bus */
-	if (!g_file_test (DBUS_SYSTEM_SOCKET, G_FILE_TEST_EXISTS)) {
-		puts("No system D-BUS running, skipping test");
-		return;
-	}
-
-	qos = up_qos_new ();
-	g_assert (qos != NULL);
-
-	/* unref */
-	g_object_unref (qos);
-}
-
-static void
 up_test_wakeups_func (void)
 {
 	UpWakeups *wakeups;
@@ -351,7 +332,6 @@ main (int argc, char **argv)
 	g_test_add_func ("/power/history", up_test_history_func);
 	g_test_add_func ("/power/native", up_test_native_func);
 	g_test_add_func ("/power/polkit", up_test_polkit_func);
-	g_test_add_func ("/power/qos", up_test_qos_func);
 	g_test_add_func ("/power/wakeups", up_test_wakeups_func);
 	g_test_add_func ("/power/daemon", up_test_daemon_func);
 

@@ -29,7 +29,6 @@ UPOWER_LIBS = $(top_builddir)/libupower-glib/libupower-glib.la
 BUILT_SOURCES =							\
 	up-daemon-glue.h					\
 	up-device-glue.h					\
-	up-qos-glue.h						\
 	up-kbd-backlight-glue.h					\
 	up-wakeups-glue.h					\
 	up-marshal.h						\
@@ -47,9 +46,6 @@ up-daemon-glue.h: org.freedesktop.UPower.xml Makefile.am
 up-device-glue.h: org.freedesktop.UPower.Device.xml Makefile.am
 	dbus-binding-tool --prefix=up_device --mode=glib-server --output=up-device-glue.h $(srcdir)/org.freedesktop.UPower.Device.xml
 
-up-qos-glue.h: org.freedesktop.UPower.QoS.xml Makefile.am
-	dbus-binding-tool --prefix=up_qos --mode=glib-server --output=up-qos-glue.h $(srcdir)/org.freedesktop.UPower.QoS.xml
-
 up-kbd-backlight-glue.h: org.freedesktop.UPower.KbdBacklight.xml Makefile.am
 	dbus-binding-tool --prefix=up_kbd_backlight --mode=glib-server --output=up-kbd-backlight-glue.h $(srcdir)/org.freedesktop.UPower.KbdBacklight.xml
 
@@ -62,7 +58,6 @@ dbusifdir = $(datadir)/dbus-1/interfaces
 dbusif_DATA =							\
 	org.freedesktop.UPower.xml				\
 	org.freedesktop.UPower.Device.xml			\
-	org.freedesktop.UPower.QoS.xml				\
 	org.freedesktop.UPower.KbdBacklight.xml			\
 	org.freedesktop.UPower.Wakeups.xml
 
@@ -75,8 +70,6 @@ upowerd_SOURCES =						\
 	up-device.c						\
 	up-device-list.h					\
 	up-device-list.c					\
-	up-qos.h						\
-	up-qos.c						\
 	up-config.h						\
 	up-config.c						\
 	up-kbd-backlight.h					\
@@ -157,8 +150,6 @@ up_self_test_SOURCES =						\
 	up-device.c						\
 	up-device-list.h					\
 	up-device-list.c					\
-	up-qos.h						\
-	up-qos.c						\
 	up-kbd-backlight.h					\
 	up-kbd-backlight.c					\
 	up-wakeups.h						\
@@ -223,7 +214,6 @@ MAINTAINERCLEANFILES =						\
 EXTRA_DIST =							\
 	org.freedesktop.UPower.xml				\
 	org.freedesktop.UPower.Device.xml			\
-	org.freedesktop.UPower.QoS.xml				\
 	org.freedesktop.UPower.KbdBacklight.xml			\
 	org.freedesktop.UPower.Wakeups.xml			\
 	up-marshal.list						\

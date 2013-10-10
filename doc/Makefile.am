@@ -60,7 +60,6 @@ content_files =  			    				\
 	man/UPower.xml		    					\
 	dbus/org.freedesktop.UPower.ref.xml				\
 	dbus/org.freedesktop.UPower.Device.ref.xml			\
-	dbus/org.freedesktop.UPower.QoS.ref.xml				\
 	dbus/org.freedesktop.UPower.KbdBacklight.ref.xml		\
 	$(NULL)
 
@@ -80,7 +79,6 @@ MAINTAINERCLEANFILES =		\
 DISTCLEANFILES =					\
 	org.freedesktop.UPower.Device.ref.xml		\
 	org.freedesktop.UPower.KbdBacklight.ref.xml	\
-	org.freedesktop.UPower.QoS.ref.xml		\
 	org.freedesktop.UPower.ref.xml			\
 	upowerd.xml					\
 	upower.xml					\
