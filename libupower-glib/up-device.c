@@ -33,11 +33,11 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include <glib.h>
-#include <dbus/dbus-glib.h>
+#include <glib-object.h>
 #include <string.h>
 
 #include "up-device.h"
+#include "up-device-glue.h"
 #include "up-stats-item.h"
 #include "up-history-item.h"
 
@@ -54,38 +54,7 @@ static void	up_device_finalize	(GObject		*object);
  **/
 struct _UpDevicePrivate
 {
-	gchar			*object_path;
-	DBusGConnection		*bus;
-	DBusGProxy		*proxy_device;
-	DBusGProxy		*proxy_props;
-
-	/* properties */
-	guint64			 update_time;
-	gchar			*vendor;
-	gchar			*model;
-	gchar			*serial;
-	gchar			*native_path;
-	gboolean		 power_supply;
-	gboolean		 online;
-	gboolean		 is_present;
-	gboolean		 is_rechargeable;
-	gboolean		 has_history;
-	gboolean		 has_statistics;
-	UpDeviceKind		 kind;
-	UpDeviceState		 state;
-	UpDeviceTechnology	 technology;
-	gdouble			 capacity;		/* percent */
-	gdouble			 energy;		/* Watt Hours */
-	gdouble			 energy_empty;		/* Watt Hours */
-	gdouble			 energy_full;		/* Watt Hours */
-	gdouble			 energy_full_design;	/* Watt Hours */
-	gdouble			 energy_rate;		/* Watts */
-	gdouble			 voltage;		/* Volts */
-	gdouble			 luminosity;   		/* Lux */
-	gint64			 time_to_empty;		/* seconds */
-	gint64			 time_to_full;		/* seconds */
-	gdouble			 percentage;		/* percent */
-	gdouble			 temperature;		/* degrees C */
+	UpDeviceGlue		*proxy_device;
 };
 
 enum {
@@ -129,126 +98,12 @@ static guint signals [SIGNAL_LAST] = { 0 };
 G_DEFINE_TYPE (UpDevice, up_device, G_TYPE_OBJECT)
 
 /*
- * up_device_get_device_properties:
- */
-static GHashTable *
-up_device_get_device_properties (UpDevice *device, GError **error)
-{
-	gboolean ret;
-	GError *error_local = NULL;
-	GHashTable *hash_table = NULL;
-
-	ret = dbus_g_proxy_call (device->priv->proxy_props, "GetAll", &error_local,
-				 G_TYPE_STRING, "org.freedesktop.UPower.Device",
-				 G_TYPE_INVALID,
-				 dbus_g_type_get_map ("GHashTable", G_TYPE_STRING, G_TYPE_VALUE),
-				 &hash_table,
-				 G_TYPE_INVALID);
-	if (!ret) {
-		g_set_error (error, 1, 0, "Couldn't call GetAll() to get properties for %s: %s", device->priv->object_path, error_local->message);
-		g_error_free (error_local);
-		goto out;
-	}
-out:
-	return hash_table;
-}
-
-/*
- * up_device_collect_props_cb:
- */
-static void
-up_device_collect_props_cb (const char *key, const GValue *value, UpDevice *device)
-{
-	if (g_strcmp0 (key, "NativePath") == 0) {
-		g_free (device->priv->native_path);
-		device->priv->native_path = g_strdup (g_value_get_string (value));
-	} else if (g_strcmp0 (key, "Vendor") == 0) {
-		g_free (device->priv->vendor);
-		device->priv->vendor = g_strdup (g_value_get_string (value));
-	} else if (g_strcmp0 (key, "Model") == 0) {
-		g_free (device->priv->model);
-		device->priv->model = g_strdup (g_value_get_string (value));
-	} else if (g_strcmp0 (key, "Serial") == 0) {
-		g_free (device->priv->serial);
-		device->priv->serial = g_strdup (g_value_get_string (value));
-	} else if (g_strcmp0 (key, "UpdateTime") == 0) {
-		device->priv->update_time = g_value_get_uint64 (value);
-	} else if (g_strcmp0 (key, "Type") == 0) {
-		device->priv->kind = g_value_get_uint (value);
-	} else if (g_strcmp0 (key, "Online") == 0) {
-		device->priv->online = g_value_get_boolean (value);
-	} else if (g_strcmp0 (key, "HasHistory") == 0) {
-		device->priv->has_history = g_value_get_boolean (value);
-	} else if (g_strcmp0 (key, "HasStatistics") == 0) {
-		device->priv->has_statistics = g_value_get_boolean (value);
-	} else if (g_strcmp0 (key, "Energy") == 0) {
-		device->priv->energy = g_value_get_double (value);
-	} else if (g_strcmp0 (key, "EnergyEmpty") == 0) {
-		device->priv->energy_empty = g_value_get_double (value);
-	} else if (g_strcmp0 (key, "EnergyFull") == 0) {
-		device->priv->energy_full = g_value_get_double (value);
-	} else if (g_strcmp0 (key, "EnergyFullDesign") == 0) {
-		device->priv->energy_full_design = g_value_get_double (value);
-	} else if (g_strcmp0 (key, "EnergyRate") == 0) {
-		device->priv->energy_rate = g_value_get_double (value);
-	} else if (g_strcmp0 (key, "Voltage") == 0) {
-		device->priv->voltage = g_value_get_double (value);
-	} else if (g_strcmp0 (key, "Luminosity") == 0) {
-		device->priv->luminosity = g_value_get_double (value);
-	} else if (g_strcmp0 (key, "TimeToFull") == 0) {
-		device->priv->time_to_full = g_value_get_int64 (value);
-	} else if (g_strcmp0 (key, "TimeToEmpty") == 0) {
-		device->priv->time_to_empty = g_value_get_int64 (value);
-	} else if (g_strcmp0 (key, "Percentage") == 0) {
-		device->priv->percentage = g_value_get_double (value);
-	} else if (g_strcmp0 (key, "Temperature") == 0) {
-		device->priv->temperature = g_value_get_double (value);
-	} else if (g_strcmp0 (key, "Technology") == 0) {
-		device->priv->technology = g_value_get_uint (value);
-	} else if (g_strcmp0 (key, "IsPresent") == 0) {
-		device->priv->is_present = g_value_get_boolean (value);
-	} else if (g_strcmp0 (key, "IsRechargeable") == 0) {
-		device->priv->is_rechargeable = g_value_get_boolean (value);
-	} else if (g_strcmp0 (key, "PowerSupply") == 0) {
-		device->priv->power_supply = g_value_get_boolean (value);
-	} else if (g_strcmp0 (key, "Capacity") == 0) {
-		device->priv->capacity = g_value_get_double (value);
-	} else if (g_strcmp0 (key, "State") == 0) {
-		device->priv->state = g_value_get_uint (value);
-	} else {
-		g_warning ("unhandled property '%s'", key);
-	}
-}
-
-/*
- * up_device_refresh_internal:
- */
-static gboolean
-up_device_refresh_internal (UpDevice *device, GError **error)
-{
-	GHashTable *hash;
-	GError *error_local = NULL;
-
-	/* get all the properties */
-	hash = up_device_get_device_properties (device, &error_local);
-	if (hash == NULL) {
-		g_set_error (error, 1, 0, "Cannot get device properties for %s: %s", device->priv->object_path, error_local->message);
-		g_error_free (error_local);
-		return FALSE;
-	}
-	g_hash_table_foreach (hash, (GHFunc) up_device_collect_props_cb, device);
-	g_hash_table_unref (hash);
-	return TRUE;
-}
-
-/*
  * up_device_changed_cb:
  */
 static void
-up_device_changed_cb (DBusGProxy *proxy, UpDevice *device)
+up_device_changed_cb (UpDeviceGlue *proxy, UpDevice *device)
 {
 	g_return_if_fail (UP_IS_DEVICE (device));
-	up_device_refresh_internal (device, NULL);
 	g_signal_emit (device, signals [SIGNAL_CHANGED], 0);
 }
 
@@ -268,66 +123,32 @@ up_device_changed_cb (DBusGProxy *proxy, UpDevice *device)
 gboolean
 up_device_set_object_path_sync (UpDevice *device, const gchar *object_path, GCancellable *cancellable, GError **error)
 {
-	GError *error_local = NULL;
-	gboolean ret = FALSE;
-	DBusGProxy *proxy_device;
-	DBusGProxy *proxy_props;
+	UpDeviceGlue *proxy_device;
 
 	g_return_val_if_fail (UP_IS_DEVICE (device), FALSE);
+	g_return_val_if_fail (object_path != NULL, FALSE);
 
-	if (device->priv->object_path != NULL)
+	if (device->priv->proxy_device != NULL)
 		return FALSE;
-	if (object_path == NULL)
-		return FALSE;
-
-	/* invalid */
-	if (object_path == NULL || object_path[0] != '/') {
-		g_set_error (error, 1, 0, "Object path %s invalid", object_path);
-		goto out;
-	}
-
-	/* connect to the bus */
-	device->priv->bus = dbus_g_bus_get (DBUS_BUS_SYSTEM, &error_local);
-	if (device->priv->bus == NULL) {
-		g_set_error (error, 1, 0, "Couldn't connect to system bus: %s", error_local->message);
-		g_error_free (error_local);
-		goto out;
-	}
-
-	/* connect to the correct path for properties */
-	proxy_props = dbus_g_proxy_new_for_name (device->priv->bus, "org.freedesktop.UPower",
-						 object_path, "org.freedesktop.DBus.Properties");
-	if (proxy_props == NULL) {
-		g_set_error_literal (error, 1, 0, "Couldn't connect to proxy");
-		goto out;
-	}
 
 	/* connect to the correct path for all the other methods */
-	proxy_device = dbus_g_proxy_new_for_name (device->priv->bus, "org.freedesktop.UPower",
-						  object_path, "org.freedesktop.UPower.Device");
-	if (proxy_device == NULL) {
-		g_set_error_literal (error, 1, 0, "Couldn't connect to proxy");
-		goto out;
-	}
+	proxy_device = up_device_glue_proxy_new_for_bus_sync (G_BUS_TYPE_SYSTEM,
+							      G_DBUS_PROXY_FLAGS_NONE,
+							      "org.freedesktop.UPower",
+							      object_path,
+							      cancellable,
+							      error);
+	if (proxy_device == NULL)
+		return FALSE;
 
 	/* listen to Changed */
-	dbus_g_proxy_add_signal (proxy_device, "Changed", G_TYPE_INVALID);
-	dbus_g_proxy_connect_signal (proxy_device, "Changed",
-				     G_CALLBACK (up_device_changed_cb), device, NULL);
+	g_signal_connect (proxy_device, "changed",
+			  G_CALLBACK (up_device_changed_cb), device);
 
 	/* yay */
 	device->priv->proxy_device = proxy_device;
-	device->priv->proxy_props = proxy_props;
-	device->priv->object_path = g_strdup (object_path);
 
-	/* coldplug */
-	ret = up_device_refresh_internal (device, &error_local);
-	if (!ret) {
-		g_set_error (error, 1, 0, "cannot refresh: %s", error_local->message);
-		g_error_free (error_local);
-	}
-out:
-	return ret;
+	return TRUE;
 }
 
 /**
@@ -344,7 +165,7 @@ const gchar *
 up_device_get_object_path (UpDevice *device)
 {
 	g_return_val_if_fail (UP_IS_DEVICE (device), NULL);
-	return device->priv->object_path;
+	return g_dbus_proxy_get_object_path (G_DBUS_PROXY (device->priv->proxy_device));
 }
 
 /*
@@ -423,99 +244,111 @@ up_device_to_text (UpDevice *device)
 	gchar time_buf[256];
 	gchar *time_str;
 	GString *string;
+	UpDevicePrivate *priv;
+	const gchar *vendor;
+	const gchar *model;
+	const gchar *serial;
+	UpDeviceKind kind;
 
 	g_return_val_if_fail (UP_IS_DEVICE (device), NULL);
 
+	priv = device->priv;
+
 	/* get a human readable time */
-	t = (time_t) device->priv->update_time;
+	t = (time_t) up_device_glue_get_update_time (priv->proxy_device);
 	time_tm = localtime (&t);
 	strftime (time_buf, sizeof time_buf, "%c", time_tm);
 
 	string = g_string_new ("");
-	g_string_append_printf (string, "  native-path:          %s\n", device->priv->native_path);
-	if (device->priv->vendor != NULL && device->priv->vendor[0] != '\0')
-		g_string_append_printf (string, "  vendor:               %s\n", device->priv->vendor);
-	if (device->priv->model != NULL && device->priv->model[0] != '\0')
-		g_string_append_printf (string, "  model:                %s\n", device->priv->model);
-	if (device->priv->serial != NULL && device->priv->serial[0] != '\0')
-		g_string_append_printf (string, "  serial:               %s\n", device->priv->serial);
-	g_string_append_printf (string, "  power supply:         %s\n", up_device_bool_to_string (device->priv->power_supply));
-	g_string_append_printf (string, "  updated:              %s (%d seconds ago)\n", time_buf, (int) (time (NULL) - device->priv->update_time));
-	g_string_append_printf (string, "  has history:          %s\n", up_device_bool_to_string (device->priv->has_history));
-	g_string_append_printf (string, "  has statistics:       %s\n", up_device_bool_to_string (device->priv->has_statistics));
-	g_string_append_printf (string, "  %s\n", up_device_kind_to_string (device->priv->kind));
+	g_string_append_printf (string, "  native-path:          %s\n", up_device_glue_get_native_path (priv->proxy_device));
+	vendor = up_device_glue_get_vendor (priv->proxy_device);
+	if (vendor != NULL && vendor[0] != '\0')
+		g_string_append_printf (string, "  vendor:               %s\n", vendor);
+	model = up_device_glue_get_model (priv->proxy_device);
+	if (model != NULL && model[0] != '\0')
+		g_string_append_printf (string, "  model:                %s\n", model);
+	serial = up_device_glue_get_serial (priv->proxy_device);
+	if (serial != NULL && serial[0] != '\0')
+		g_string_append_printf (string, "  serial:               %s\n", serial);
+	g_string_append_printf (string, "  power supply:         %s\n", up_device_bool_to_string (up_device_glue_get_power_supply (priv->proxy_device)));
+	g_string_append_printf (string, "  updated:              %s (%d seconds ago)\n", time_buf, (int) (time (NULL) - up_device_glue_get_update_time (priv->proxy_device)));
+	g_string_append_printf (string, "  has history:          %s\n", up_device_bool_to_string (up_device_glue_get_has_history (priv->proxy_device)));
+	g_string_append_printf (string, "  has statistics:       %s\n", up_device_bool_to_string (up_device_glue_get_has_statistics (priv->proxy_device)));
 
-	if (device->priv->kind == UP_DEVICE_KIND_BATTERY ||
-	    device->priv->kind == UP_DEVICE_KIND_MOUSE ||
-	    device->priv->kind == UP_DEVICE_KIND_KEYBOARD ||
-	    device->priv->kind == UP_DEVICE_KIND_UPS)
-		g_string_append_printf (string, "    present:             %s\n", up_device_bool_to_string (device->priv->is_present));
-	if (device->priv->kind == UP_DEVICE_KIND_PHONE ||
-	    device->priv->kind == UP_DEVICE_KIND_BATTERY ||
-	    device->priv->kind == UP_DEVICE_KIND_MOUSE ||
-	    device->priv->kind == UP_DEVICE_KIND_KEYBOARD)
-		g_string_append_printf (string, "    rechargeable:        %s\n", up_device_bool_to_string (device->priv->is_rechargeable));
-	if (device->priv->kind == UP_DEVICE_KIND_BATTERY ||
-	    device->priv->kind == UP_DEVICE_KIND_MOUSE ||
-	    device->priv->kind == UP_DEVICE_KIND_KEYBOARD ||
-	    device->priv->kind == UP_DEVICE_KIND_UPS)
-		g_string_append_printf (string, "    state:               %s\n", up_device_state_to_string (device->priv->state));
-	if (device->priv->kind == UP_DEVICE_KIND_BATTERY) {
-		g_string_append_printf (string, "    energy:              %g Wh\n", device->priv->energy);
-		g_string_append_printf (string, "    energy-empty:        %g Wh\n", device->priv->energy_empty);
-		g_string_append_printf (string, "    energy-full:         %g Wh\n", device->priv->energy_full);
-		g_string_append_printf (string, "    energy-full-design:  %g Wh\n", device->priv->energy_full_design);
+	kind = up_device_glue_get_type_ (priv->proxy_device);
+	g_string_append_printf (string, "  %s\n", up_device_kind_to_string (kind));
+
+	if (kind == UP_DEVICE_KIND_BATTERY ||
+	    kind == UP_DEVICE_KIND_MOUSE ||
+	    kind == UP_DEVICE_KIND_KEYBOARD ||
+	    kind == UP_DEVICE_KIND_UPS)
+		g_string_append_printf (string, "    present:             %s\n", up_device_bool_to_string (up_device_glue_get_is_present (priv->proxy_device)));
+	if (kind == UP_DEVICE_KIND_PHONE ||
+	    kind == UP_DEVICE_KIND_BATTERY ||
+	    kind == UP_DEVICE_KIND_MOUSE ||
+	    kind == UP_DEVICE_KIND_KEYBOARD)
+		g_string_append_printf (string, "    rechargeable:        %s\n", up_device_bool_to_string (up_device_glue_get_is_rechargeable (priv->proxy_device)));
+	if (kind == UP_DEVICE_KIND_BATTERY ||
+	    kind == UP_DEVICE_KIND_MOUSE ||
+	    kind == UP_DEVICE_KIND_KEYBOARD ||
+	    kind == UP_DEVICE_KIND_UPS)
+		g_string_append_printf (string, "    state:               %s\n", up_device_state_to_string (up_device_glue_get_state (priv->proxy_device)));
+	if (kind == UP_DEVICE_KIND_BATTERY) {
+		g_string_append_printf (string, "    energy:              %g Wh\n", up_device_glue_get_energy (priv->proxy_device));
+		g_string_append_printf (string, "    energy-empty:        %g Wh\n", up_device_glue_get_energy_empty (priv->proxy_device));
+		g_string_append_printf (string, "    energy-full:         %g Wh\n", up_device_glue_get_energy_full (priv->proxy_device));
+		g_string_append_printf (string, "    energy-full-design:  %g Wh\n", up_device_glue_get_energy_full_design (priv->proxy_device));
 	}
-	if (device->priv->kind == UP_DEVICE_KIND_BATTERY ||
-	    device->priv->kind == UP_DEVICE_KIND_MONITOR)
-		g_string_append_printf (string, "    energy-rate:         %g W\n", device->priv->energy_rate);
-	if (device->priv->kind == UP_DEVICE_KIND_UPS ||
-	    device->priv->kind == UP_DEVICE_KIND_BATTERY ||
-	    device->priv->kind == UP_DEVICE_KIND_MONITOR) {
-		if (device->priv->voltage > 0)
-			g_string_append_printf (string, "    voltage:             %g V\n", device->priv->voltage);
+	if (kind == UP_DEVICE_KIND_BATTERY ||
+	    kind == UP_DEVICE_KIND_MONITOR)
+		g_string_append_printf (string, "    energy-rate:         %g W\n", up_device_glue_get_energy_rate (priv->proxy_device));
+	if (kind == UP_DEVICE_KIND_UPS ||
+	    kind == UP_DEVICE_KIND_BATTERY ||
+	    kind == UP_DEVICE_KIND_MONITOR) {
+		if (up_device_glue_get_voltage (priv->proxy_device) > 0)
+			g_string_append_printf (string, "    voltage:             %g V\n", up_device_glue_get_voltage (priv->proxy_device));
 	}
-	if (device->priv->kind == UP_DEVICE_KIND_KEYBOARD) {
-		if (device->priv->luminosity > 0)
-			g_string_append_printf (string, "    luminosity:          %g lx\n", device->priv->luminosity);
+	if (kind == UP_DEVICE_KIND_KEYBOARD) {
+		if (up_device_glue_get_luminosity (priv->proxy_device) > 0)
+			g_string_append_printf (string, "    luminosity:          %g lx\n", up_device_glue_get_luminosity (priv->proxy_device));
 	}
-	if (device->priv->kind == UP_DEVICE_KIND_BATTERY ||
-	    device->priv->kind == UP_DEVICE_KIND_UPS) {
-		if (device->priv->time_to_full > 0) {
-			time_str = up_device_to_text_time_to_string (device->priv->time_to_full);
+	if (kind == UP_DEVICE_KIND_BATTERY ||
+	    kind == UP_DEVICE_KIND_UPS) {
+		if (up_device_glue_get_time_to_full (priv->proxy_device) > 0) {
+			time_str = up_device_to_text_time_to_string (up_device_glue_get_time_to_full (priv->proxy_device));
 			g_string_append_printf (string, "    time to full:        %s\n", time_str);
 			g_free (time_str);
 		}
-		if (device->priv->time_to_empty > 0) {
-			time_str = up_device_to_text_time_to_string (device->priv->time_to_empty);
+		if (up_device_glue_get_time_to_empty (priv->proxy_device) > 0) {
+			time_str = up_device_to_text_time_to_string (up_device_glue_get_time_to_empty (priv->proxy_device));
 			g_string_append_printf (string, "    time to empty:       %s\n", time_str);
 			g_free (time_str);
 		}
 	}
-	if (device->priv->kind == UP_DEVICE_KIND_BATTERY ||
-	    device->priv->kind == UP_DEVICE_KIND_MOUSE ||
-	    device->priv->kind == UP_DEVICE_KIND_KEYBOARD ||
-	    device->priv->kind == UP_DEVICE_KIND_PHONE ||
-	    device->priv->kind == UP_DEVICE_KIND_TABLET ||
-	    device->priv->kind == UP_DEVICE_KIND_COMPUTER ||
-	    device->priv->kind == UP_DEVICE_KIND_MEDIA_PLAYER ||
-	    device->priv->kind == UP_DEVICE_KIND_UPS)
-		g_string_append_printf (string, "    percentage:          %g%%\n", device->priv->percentage);
-	if (device->priv->kind == UP_DEVICE_KIND_BATTERY) {
-		if (device->priv->temperature > 0)
-			g_string_append_printf (string, "    temperature:         %g degrees C\n", device->priv->temperature);
-		if (device->priv->capacity > 0)
-			g_string_append_printf (string, "    capacity:            %g%%\n", device->priv->capacity);
+	if (kind == UP_DEVICE_KIND_BATTERY ||
+	    kind == UP_DEVICE_KIND_MOUSE ||
+	    kind == UP_DEVICE_KIND_KEYBOARD ||
+	    kind == UP_DEVICE_KIND_PHONE ||
+	    kind == UP_DEVICE_KIND_TABLET ||
+	    kind == UP_DEVICE_KIND_COMPUTER ||
+	    kind == UP_DEVICE_KIND_MEDIA_PLAYER ||
+	    kind == UP_DEVICE_KIND_UPS)
+		g_string_append_printf (string, "    percentage:          %g%%\n", up_device_glue_get_percentage (priv->proxy_device));
+	if (kind == UP_DEVICE_KIND_BATTERY) {
+		if (up_device_glue_get_temperature (priv->proxy_device) > 0)
+			g_string_append_printf (string, "    temperature:         %g degrees C\n", up_device_glue_get_temperature (priv->proxy_device));
+		if (up_device_glue_get_capacity (priv->proxy_device) > 0)
+			g_string_append_printf (string, "    capacity:            %g%%\n", up_device_glue_get_capacity (priv->proxy_device));
 	}
-	if (device->priv->kind == UP_DEVICE_KIND_BATTERY) {
-		if (device->priv->technology != UP_DEVICE_TECHNOLOGY_UNKNOWN)
-			g_string_append_printf (string, "    technology:          %s\n", up_device_technology_to_string (device->priv->technology));
+	if (kind == UP_DEVICE_KIND_BATTERY) {
+		if (up_device_glue_get_technology (priv->proxy_device) != UP_DEVICE_TECHNOLOGY_UNKNOWN)
+			g_string_append_printf (string, "    technology:          %s\n", up_device_technology_to_string (up_device_glue_get_technology (priv->proxy_device)));
 	}
-	if (device->priv->kind == UP_DEVICE_KIND_LINE_POWER)
-		g_string_append_printf (string, "    online:             %s\n", up_device_bool_to_string (device->priv->online));
+	if (kind == UP_DEVICE_KIND_LINE_POWER)
+		g_string_append_printf (string, "    online:             %s\n", up_device_bool_to_string (up_device_glue_get_online (priv->proxy_device)));
 
 	/* if we can, get history */
-	if (device->priv->has_history) {
+	if (up_device_glue_get_has_history (priv->proxy_device)) {
 		up_device_to_text_history (device, string, "charge");
 		up_device_to_text_history (device, string, "rate");
 	}
@@ -539,27 +372,11 @@ up_device_to_text (UpDevice *device)
 gboolean
 up_device_refresh_sync (UpDevice *device, GCancellable *cancellable, GError **error)
 {
-	GError *error_local = NULL;
-	gboolean ret;
-
 	g_return_val_if_fail (UP_IS_DEVICE (device), FALSE);
 	g_return_val_if_fail (device->priv->proxy_device != NULL, FALSE);
 
-	/* just refresh the device */
-	ret = dbus_g_proxy_call (device->priv->proxy_device, "Refresh", &error_local,
-				 G_TYPE_INVALID, G_TYPE_INVALID);
-	if (!ret) {
-		g_set_error (error, 1, 0, "Refresh() on %s failed: %s", device->priv->object_path, error_local->message);
-		g_error_free (error_local);
-		goto out;
-	}
-out:
-	return ret;
+	return up_device_glue_call_refresh_sync (device->priv->proxy_device, cancellable, error);
 }
-
-/* FIXME: GValueArray is deprecated in GLib 2.33+, but we need to convert to
- * GDBus to get rid of it */
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
 
 /**
  * up_device_get_history_sync:
@@ -582,71 +399,66 @@ GPtrArray *
 up_device_get_history_sync (UpDevice *device, const gchar *type, guint timespec, guint resolution, GCancellable *cancellable, GError **error)
 {
 	GError *error_local = NULL;
-	GType g_type_gvalue_array;
-	GPtrArray *gvalue_ptr_array = NULL;
-	GValueArray *gva;
-	GValue *gv;
+	GVariant *gva;
 	guint i;
-	UpHistoryItem *item;
 	GPtrArray *array = NULL;
 	gboolean ret;
+	gsize len;
+	GVariantIter *iter;
 
 	g_return_val_if_fail (UP_IS_DEVICE (device), NULL);
 	g_return_val_if_fail (device->priv->proxy_device != NULL, NULL);
 
-	g_type_gvalue_array = dbus_g_type_get_collection ("GPtrArray",
-					dbus_g_type_get_struct("GValueArray",
-						G_TYPE_UINT,
-						G_TYPE_DOUBLE,
-						G_TYPE_UINT,
-						G_TYPE_INVALID));
-
 	/* get compound data */
-	ret = dbus_g_proxy_call (device->priv->proxy_device, "GetHistory", &error_local,
-				 G_TYPE_STRING, type,
-				 G_TYPE_UINT, timespec,
-				 G_TYPE_UINT, resolution,
-				 G_TYPE_INVALID,
-				 g_type_gvalue_array, &gvalue_ptr_array,
-				 G_TYPE_INVALID);
+	ret = up_device_glue_call_get_history_sync (device->priv->proxy_device,
+						    type,
+						    timespec,
+						    resolution,
+						    &gva,
+						    NULL,
+						    &error_local);
 	if (!ret) {
 		g_set_error (error, 1, 0, "GetHistory(%s,%i) on %s failed: %s", type, timespec,
-			   device->priv->object_path, error_local->message);
+			     up_device_get_object_path (device), error_local->message);
 		g_error_free (error_local);
 		goto out;
 	}
 
+	iter = g_variant_iter_new (gva);
+	len = g_variant_iter_n_children (iter);
+
 	/* no data */
-	if (gvalue_ptr_array->len == 0) {
+	if (len == 0) {
 		g_set_error_literal (error, 1, 0, "no data");
+		g_variant_iter_free (iter);
 		goto out;
 	}
 
 	/* convert */
 	array = g_ptr_array_new_with_free_func ((GDestroyNotify) g_object_unref);
+	for (i = 0; i < len; i++) {
+		UpHistoryItem *obj;
+		GVariant *v;
+		gdouble value;
+		guint32 time, state;
 
-	for (i=0; i<gvalue_ptr_array->len; i++) {
-		gva = (GValueArray *) g_ptr_array_index (gvalue_ptr_array, i);
-		item = up_history_item_new ();
-		/* 0 */
-		gv = g_value_array_get_nth (gva, 0);
-		up_history_item_set_time (item, g_value_get_uint (gv));
-		g_value_unset (gv);
-		/* 1 */
-		gv = g_value_array_get_nth (gva, 1);
-		up_history_item_set_value (item, g_value_get_double (gv));
-		g_value_unset (gv);
-		/* 2 */
-		gv = g_value_array_get_nth (gva, 2);
-		up_history_item_set_state (item, g_value_get_uint (gv));
-		g_value_unset (gv);
-		g_ptr_array_add (array, item);
-		g_value_array_free (gva);
+		v = g_variant_iter_next_value (iter);
+		g_variant_get (v, "(udu)",
+			       &time, &value, &state);
+		g_variant_unref (v);
+
+		obj = up_history_item_new ();
+		up_history_item_set_time (obj, time);
+		up_history_item_set_value (obj, value);
+		up_history_item_set_state (obj, state);
+
+		g_ptr_array_add (array, obj);
 	}
+	g_variant_iter_free (iter);
 
 out:
-	if (gvalue_ptr_array != NULL)
-		g_ptr_array_free (gvalue_ptr_array, TRUE);
+	if (gva != NULL)
+		g_variant_unref (gva);
 	return array;
 }
 
@@ -667,68 +479,64 @@ GPtrArray *
 up_device_get_statistics_sync (UpDevice *device, const gchar *type, GCancellable *cancellable, GError **error)
 {
 	GError *error_local = NULL;
-	GType g_type_gvalue_array;
-	GPtrArray *gvalue_ptr_array = NULL;
-	GValueArray *gva;
-	GValue *gv;
+	GVariant *gva;
 	guint i;
-	UpStatsItem *item;
 	GPtrArray *array = NULL;
 	gboolean ret;
+	gsize len;
+	GVariantIter *iter;
 
 	g_return_val_if_fail (UP_IS_DEVICE (device), NULL);
 	g_return_val_if_fail (device->priv->proxy_device != NULL, NULL);
 
-	g_type_gvalue_array = dbus_g_type_get_collection ("GPtrArray",
-					dbus_g_type_get_struct("GValueArray",
-						G_TYPE_DOUBLE,
-						G_TYPE_DOUBLE,
-						G_TYPE_INVALID));
-
 	/* get compound data */
-	ret = dbus_g_proxy_call (device->priv->proxy_device, "GetStatistics", &error_local,
-				 G_TYPE_STRING, type,
-				 G_TYPE_INVALID,
-				 g_type_gvalue_array, &gvalue_ptr_array,
-				 G_TYPE_INVALID);
+	ret = up_device_glue_call_get_statistics_sync (device->priv->proxy_device,
+						       type,
+						       &gva,
+						       NULL,
+						       &error_local);
 	if (!ret) {
 		g_set_error (error, 1, 0, "GetStatistics(%s) on %s failed: %s", type,
-				      device->priv->object_path, error_local->message);
+				      up_device_get_object_path (device), error_local->message);
 		g_error_free (error_local);
 		goto out;
 	}
 
+	iter = g_variant_iter_new (gva);
+	len = g_variant_iter_n_children (iter);
+
 	/* no data */
-	if (gvalue_ptr_array->len == 0) {
+	if (len == 0) {
 		g_set_error_literal (error, 1, 0, "no data");
+		g_variant_iter_free (iter);
 		goto out;
 	}
 
 	/* convert */
-	array = g_ptr_array_new ();
+	array = g_ptr_array_new_with_free_func ((GDestroyNotify) g_object_unref);
+	for (i = 0; i < len; i++) {
+		UpStatsItem *obj;
+		GVariant *v;
+		gdouble value, accuracy;
 
-	for (i=0; i<gvalue_ptr_array->len; i++) {
-		gva = (GValueArray *) g_ptr_array_index (gvalue_ptr_array, i);
-		item = up_stats_item_new ();
-		/* 0 */
-		gv = g_value_array_get_nth (gva, 0);
-		up_stats_item_set_value (item, g_value_get_double (gv));
-		g_value_unset (gv);
-		/* 1 */
-		gv = g_value_array_get_nth (gva, 1);
-		up_stats_item_set_accuracy (item, g_value_get_double (gv));
-		g_value_unset (gv);
-		/* 2 */
-		g_ptr_array_add (array, item);
-		g_value_array_free (gva);
+		v = g_variant_iter_next_value (iter);
+		g_variant_get (v, "(dd)",
+			       &value, &accuracy);
+		g_variant_unref (v);
+
+		obj = up_stats_item_new ();
+		up_stats_item_set_value (obj, value);
+		up_stats_item_set_accuracy (obj, accuracy);
+
+		g_ptr_array_add (array, obj);
 	}
+	g_variant_iter_free (iter);
+
 out:
-	if (gvalue_ptr_array != NULL)
-		g_ptr_array_free (gvalue_ptr_array, TRUE);
+	if (gva != NULL)
+		g_variant_unref (gva);
 	return array;
 }
-
-#pragma GCC diagnostic error "-Wdeprecated-declarations"
 
 /*
  * up_device_set_property:
@@ -740,86 +548,82 @@ up_device_set_property (GObject *object, guint prop_id, const GValue *value, GPa
 
 	switch (prop_id) {
 	case PROP_NATIVE_PATH:
-		g_free (device->priv->native_path);
-		device->priv->native_path = g_strdup (g_value_get_string (value));
+		up_device_glue_set_native_path (device->priv->proxy_device, g_value_get_string (value));
 		break;
 	case PROP_VENDOR:
-		g_free (device->priv->vendor);
-		device->priv->vendor = g_strdup (g_value_get_string (value));
+		up_device_glue_set_vendor (device->priv->proxy_device, g_value_get_string (value));
 		break;
 	case PROP_MODEL:
-		g_free (device->priv->model);
-		device->priv->model = g_strdup (g_value_get_string (value));
+		up_device_glue_set_model (device->priv->proxy_device, g_value_get_string (value));
 		break;
 	case PROP_SERIAL:
-		g_free (device->priv->serial);
-		device->priv->serial = g_strdup (g_value_get_string (value));
+		up_device_glue_set_serial (device->priv->proxy_device, g_value_get_string (value));
 		break;
 	case PROP_UPDATE_TIME:
-		device->priv->update_time = g_value_get_uint64 (value);
+		up_device_glue_set_update_time (device->priv->proxy_device, g_value_get_uint64 (value));
 		break;
 	case PROP_KIND:
-		device->priv->kind = g_value_get_uint (value);
+		up_device_glue_set_type_ (device->priv->proxy_device, g_value_get_uint (value));
 		break;
 	case PROP_POWER_SUPPLY:
-		device->priv->power_supply = g_value_get_boolean (value);
+		up_device_glue_set_power_supply (device->priv->proxy_device, g_value_get_boolean (value));
 		break;
 	case PROP_ONLINE:
-		device->priv->online = g_value_get_boolean (value);
+		up_device_glue_set_online (device->priv->proxy_device, g_value_get_boolean (value));
 		break;
 	case PROP_IS_PRESENT:
-		device->priv->is_present = g_value_get_boolean (value);
+		up_device_glue_set_is_present (device->priv->proxy_device, g_value_get_boolean (value));
 		break;
 	case PROP_IS_RECHARGEABLE:
-		device->priv->is_rechargeable = g_value_get_boolean (value);
+		up_device_glue_set_is_rechargeable (device->priv->proxy_device, g_value_get_boolean (value));
 		break;
 	case PROP_HAS_HISTORY:
-		device->priv->has_history = g_value_get_boolean (value);
+		up_device_glue_set_has_history (device->priv->proxy_device, g_value_get_boolean (value));
 		break;
 	case PROP_HAS_STATISTICS:
-		device->priv->has_statistics = g_value_get_boolean (value);
+		up_device_glue_set_has_statistics (device->priv->proxy_device, g_value_get_boolean (value));
 		break;
 	case PROP_STATE:
-		device->priv->state = g_value_get_uint (value);
+		up_device_glue_set_state (device->priv->proxy_device, g_value_get_uint (value));
 		break;
 	case PROP_CAPACITY:
-		device->priv->capacity = g_value_get_double (value);
+		up_device_glue_set_capacity (device->priv->proxy_device, g_value_get_double (value));
 		break;
 	case PROP_ENERGY:
-		device->priv->energy = g_value_get_double (value);
+		up_device_glue_set_energy (device->priv->proxy_device, g_value_get_double (value));
 		break;
 	case PROP_ENERGY_EMPTY:
-		device->priv->energy_empty = g_value_get_double (value);
+		up_device_glue_set_energy_empty (device->priv->proxy_device, g_value_get_double (value));
 		break;
 	case PROP_ENERGY_FULL:
-		device->priv->energy_full = g_value_get_double (value);
+		up_device_glue_set_energy_full (device->priv->proxy_device, g_value_get_double (value));
 		break;
 	case PROP_ENERGY_FULL_DESIGN:
-		device->priv->energy_full_design = g_value_get_double (value);
+		up_device_glue_set_energy_full_design (device->priv->proxy_device, g_value_get_double (value));
 		break;
 	case PROP_ENERGY_RATE:
-		device->priv->energy_rate = g_value_get_double (value);
+		up_device_glue_set_energy_rate (device->priv->proxy_device, g_value_get_double (value));
 		break;
 	case PROP_VOLTAGE:
-		device->priv->voltage = g_value_get_double (value);
+		up_device_glue_set_voltage (device->priv->proxy_device, g_value_get_double (value));
 		break;
 	case PROP_LUMINOSITY:
-		device->priv->luminosity = g_value_get_double (value);
+		up_device_glue_set_luminosity (device->priv->proxy_device, g_value_get_double (value));
 		break;
 	case PROP_TIME_TO_EMPTY:
-		device->priv->time_to_empty = g_value_get_int64 (value);
+		up_device_glue_set_time_to_empty (device->priv->proxy_device, g_value_get_int64 (value));
 		break;
 	case PROP_TIME_TO_FULL:
-		device->priv->time_to_full = g_value_get_int64 (value);
+		up_device_glue_set_time_to_full (device->priv->proxy_device, g_value_get_int64 (value));
 		break;
 	case PROP_PERCENTAGE:
-		device->priv->percentage = g_value_get_double (value);
+		up_device_glue_set_percentage (device->priv->proxy_device, g_value_get_double (value));
 		break;
 	case PROP_TEMPERATURE:
-		device->priv->temperature = g_value_get_double (value);
+		up_device_glue_set_temperature (device->priv->proxy_device, g_value_get_double (value));
 		break;
 	case PROP_TECHNOLOGY:
-		device->priv->technology = g_value_get_uint (value);
+		up_device_glue_set_technology (device->priv->proxy_device, g_value_get_uint (value));
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -837,82 +641,82 @@ up_device_get_property (GObject *object, guint prop_id, GValue *value, GParamSpe
 
 	switch (prop_id) {
 	case PROP_UPDATE_TIME:
-		g_value_set_uint64 (value, device->priv->update_time);
+		g_value_set_uint64 (value, up_device_glue_get_update_time (device->priv->proxy_device));
 		break;
 	case PROP_VENDOR:
-		g_value_set_string (value, device->priv->vendor);
+		g_value_set_string (value, up_device_glue_get_vendor (device->priv->proxy_device));
 		break;
 	case PROP_MODEL:
-		g_value_set_string (value, device->priv->model);
+		g_value_set_string (value, up_device_glue_get_model (device->priv->proxy_device));
 		break;
 	case PROP_SERIAL:
-		g_value_set_string (value, device->priv->serial);
+		g_value_set_string (value, up_device_glue_get_serial (device->priv->proxy_device));
 		break;
 	case PROP_NATIVE_PATH:
-		g_value_set_string (value, device->priv->native_path);
+		g_value_set_string (value, up_device_glue_get_native_path (device->priv->proxy_device));
 		break;
 	case PROP_POWER_SUPPLY:
-		g_value_set_boolean (value, device->priv->power_supply);
+		g_value_set_boolean (value, up_device_glue_get_power_supply (device->priv->proxy_device));
 		break;
 	case PROP_ONLINE:
-		g_value_set_boolean (value, device->priv->online);
+		g_value_set_boolean (value, up_device_glue_get_online (device->priv->proxy_device));
 		break;
 	case PROP_IS_PRESENT:
-		g_value_set_boolean (value, device->priv->is_present);
+		g_value_set_boolean (value, up_device_glue_get_is_present (device->priv->proxy_device));
 		break;
 	case PROP_IS_RECHARGEABLE:
-		g_value_set_boolean (value, device->priv->is_rechargeable);
+		g_value_set_boolean (value, up_device_glue_get_is_rechargeable (device->priv->proxy_device));
 		break;
 	case PROP_HAS_HISTORY:
-		g_value_set_boolean (value, device->priv->has_history);
+		g_value_set_boolean (value, up_device_glue_get_has_history (device->priv->proxy_device));
 		break;
 	case PROP_HAS_STATISTICS:
-		g_value_set_boolean (value, device->priv->has_statistics);
+		g_value_set_boolean (value, up_device_glue_get_has_statistics (device->priv->proxy_device));
 		break;
 	case PROP_KIND:
-		g_value_set_uint (value, device->priv->kind);
+		g_value_set_uint (value, up_device_glue_get_type_ (device->priv->proxy_device));
 		break;
 	case PROP_STATE:
-		g_value_set_uint (value, device->priv->state);
+		g_value_set_uint (value, up_device_glue_get_state (device->priv->proxy_device));
 		break;
 	case PROP_TECHNOLOGY:
-		g_value_set_uint (value, device->priv->technology);
+		g_value_set_uint (value, up_device_glue_get_technology (device->priv->proxy_device));
 		break;
 	case PROP_CAPACITY:
-		g_value_set_double (value, device->priv->capacity);
+		g_value_set_double (value, up_device_glue_get_capacity (device->priv->proxy_device));
 		break;
 	case PROP_ENERGY:
-		g_value_set_double (value, device->priv->energy);
+		g_value_set_double (value, up_device_glue_get_energy (device->priv->proxy_device));
 		break;
 	case PROP_ENERGY_EMPTY:
-		g_value_set_double (value, device->priv->energy_empty);
+		g_value_set_double (value, up_device_glue_get_energy_empty (device->priv->proxy_device));
 		break;
 	case PROP_ENERGY_FULL:
-		g_value_set_double (value, device->priv->energy_full);
+		g_value_set_double (value, up_device_glue_get_energy_full (device->priv->proxy_device));
 		break;
 	case PROP_ENERGY_FULL_DESIGN:
-		g_value_set_double (value, device->priv->energy_full_design);
+		g_value_set_double (value, up_device_glue_get_energy_full_design (device->priv->proxy_device));
 		break;
 	case PROP_ENERGY_RATE:
-		g_value_set_double (value, device->priv->energy_rate);
+		g_value_set_double (value, up_device_glue_get_energy_rate (device->priv->proxy_device));
 		break;
 	case PROP_VOLTAGE:
-		g_value_set_double (value, device->priv->voltage);
+		g_value_set_double (value, up_device_glue_get_voltage (device->priv->proxy_device));
 		break;
 	case PROP_LUMINOSITY:
-		g_value_set_double (value, device->priv->luminosity);
+		g_value_set_double (value, up_device_glue_get_luminosity (device->priv->proxy_device));
 		break;
 	case PROP_TIME_TO_EMPTY:
-		g_value_set_int64 (value, device->priv->time_to_empty);
+		g_value_set_int64 (value, up_device_glue_get_time_to_empty (device->priv->proxy_device));
 		break;
 	case PROP_TIME_TO_FULL:
-		g_value_set_int64 (value, device->priv->time_to_full);
+		g_value_set_int64 (value, up_device_glue_get_time_to_full (device->priv->proxy_device));
 		break;
 	case PROP_PERCENTAGE:
-		g_value_set_double (value, device->priv->percentage);
+		g_value_set_double (value, up_device_glue_get_percentage (device->priv->proxy_device));
 		break;
 	case PROP_TEMPERATURE:
-		g_value_set_double (value, device->priv->temperature);
+		g_value_set_double (value, up_device_glue_get_temperature (device->priv->proxy_device));
 		break;
 	default:
 		G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -1308,15 +1112,8 @@ up_device_finalize (GObject *object)
 
 	device = UP_DEVICE (object);
 
-	g_free (device->priv->object_path);
-	g_free (device->priv->vendor);
-	g_free (device->priv->model);
-	g_free (device->priv->serial);
-	g_free (device->priv->native_path);
 	if (device->priv->proxy_device != NULL)
 		g_object_unref (device->priv->proxy_device);
-	if (device->priv->proxy_props != NULL)
-		g_object_unref (device->priv->proxy_props);
 
 	G_OBJECT_CLASS (up_device_parent_class)->finalize (object);
 }
@@ -1335,4 +1132,3 @@ up_device_new (void)
 {
 	return UP_DEVICE (g_object_new (UP_TYPE_DEVICE, NULL));
 }
-
