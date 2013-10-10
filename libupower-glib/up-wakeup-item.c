@@ -452,8 +452,6 @@ up_wakeup_item_finalize (GObject *object)
 UpWakeupItem *
 up_wakeup_item_new (void)
 {
-	UpWakeupItem *wakeup_item;
-	wakeup_item = g_object_new (UP_TYPE_WAKEUP_ITEM, NULL);
-	return UP_WAKEUP_ITEM (wakeup_item);
+	return UP_WAKEUP_ITEM (g_object_new (UP_TYPE_WAKEUP_ITEM, NULL));
 }
 

@@ -1333,8 +1333,6 @@ up_device_finalize (GObject *object)
 UpDevice *
 up_device_new (void)
 {
-	UpDevice *device;
-	device = g_object_new (UP_TYPE_DEVICE, NULL);
-	return UP_DEVICE (device);
+	return UP_DEVICE (g_object_new (UP_TYPE_DEVICE, NULL));
 }
 

@@ -393,8 +393,6 @@ up_wakeups_finalize (GObject *object)
 UpWakeups *
 up_wakeups_new (void)
 {
-	UpWakeups *wakeups;
-	wakeups = g_object_new (UP_TYPE_WAKEUPS, NULL);
-	return UP_WAKEUPS (wakeups);
+	return UP_WAKEUPS (g_object_new (UP_TYPE_WAKEUPS, NULL));
 }
 

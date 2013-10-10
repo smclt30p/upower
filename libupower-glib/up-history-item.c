@@ -355,8 +355,6 @@ up_history_item_finalize (GObject *object)
 UpHistoryItem *
 up_history_item_new (void)
 {
-	UpHistoryItem *history_item;
-	history_item = g_object_new (UP_TYPE_HISTORY_ITEM, NULL);
-	return UP_HISTORY_ITEM (history_item);
+	return UP_HISTORY_ITEM (g_object_new (UP_TYPE_HISTORY_ITEM, NULL));
 }
 
