@@ -119,10 +119,6 @@ static void
 up_client_print (UpClient *client)
 {
 	gchar *daemon_version;
-#ifdef ENABLE_DEPRECATED
-	gboolean can_suspend;
-	gboolean can_hibernate;
-#endif
 	gboolean on_battery;
 	gboolean on_low_battery;
 	gboolean lid_is_closed;
@@ -131,10 +127,6 @@ up_client_print (UpClient *client)
 
 	g_object_get (client,
 		      "daemon-version", &daemon_version,
-#ifdef ENABLE_DEPRECATED
-		      "can-suspend", &can_suspend,
-		      "can-hibernate", &can_hibernate,
-#endif
 		      "on-battery", &on_battery,
 		      "on-low_battery", &on_low_battery,
 		      "lid-is-closed", &lid_is_closed,
@@ -143,10 +135,6 @@ up_client_print (UpClient *client)
 		      NULL);
 
 	g_print ("  daemon-version:  %s\n", daemon_version);
-#ifdef ENABLE_DEPRECATED
-	g_print ("  can-suspend:     %s\n", can_suspend ? "yes" : "no");
-	g_print ("  can-hibernate:   %s\n", can_hibernate ? "yes" : "no");
-#endif
 	g_print ("  on-battery:      %s\n", on_battery ? "yes" : "no");
 	g_print ("  on-low-battery:  %s\n", on_low_battery ? "yes" : "no");
 	g_print ("  lid-is-closed:   %s\n", lid_is_closed ? "yes" : "no");
