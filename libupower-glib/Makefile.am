@@ -1,6 +1,5 @@
 AM_CPPFLAGS = \
 	$(GLIB_CFLAGS)						\
-	$(DBUS_GLIB_CFLAGS)					\
 	$(GIO_UNIX_CFLAGS)					\
 	-I$(top_builddir)					\
 	-I$(top_srcdir)						\
@@ -83,8 +82,7 @@ libupower_glib_la_SOURCES =					\
 libupower_glib_la_LIBADD =					\
 	$(INTLLIBS)						\
 	$(GLIB_LIBS)						\
-	$(GIO_UNIX_LIBS)					\
-	$(DBUS_GLIB_LIBS)
+	$(GIO_UNIX_LIBS)
 
 libupower_glib_la_LDFLAGS =					\
 	-version-info $(LT_CURRENT):$(LT_REVISION):$(LT_AGE)	\
