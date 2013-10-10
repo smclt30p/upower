@@ -58,13 +58,10 @@ struct _UpClientPrivate
 	GPtrArray		*array;
 	gboolean		 have_properties;
 	gchar			*daemon_version;
-	gboolean		 can_suspend;
-	gboolean		 can_hibernate;
 	gboolean		 lid_is_closed;
 	gboolean		 on_battery;
 	gboolean		 on_low_battery;
 	gboolean		 lid_is_present;
-	gboolean		 lid_force_sleep;
 	gboolean		 is_docked;
 	gboolean		 done_enumerate;
 };
@@ -74,21 +71,16 @@ enum {
 	UP_CLIENT_DEVICE_CHANGED,
 	UP_CLIENT_DEVICE_REMOVED,
 	UP_CLIENT_CHANGED,
-	UP_CLIENT_NOTIFY_SLEEP,
-	UP_CLIENT_NOTIFY_RESUME,
 	UP_CLIENT_LAST_SIGNAL
 };
 
 enum {
 	PROP_0,
 	PROP_DAEMON_VERSION,
-	PROP_CAN_SUSPEND,
-	PROP_CAN_HIBERNATE,
 	PROP_ON_BATTERY,
 	PROP_ON_LOW_BATTERY,
 	PROP_LID_IS_CLOSED,
 	PROP_LID_IS_PRESENT,
-	PROP_LID_FORCE_SLEEP,
 	PROP_IS_DOCKED,
 	PROP_LAST
 };
@@ -165,140 +157,6 @@ up_client_get_devices_private (UpClient *client, GError **error)
 }
 
 /**
- * up_client_suspend_sync:
- * @client: a #UpClient instance.
- * @cancellable: a #GCancellable or %NULL
- * @error: a #GError, or %NULL.
- *
- * Puts the computer into a low power state, but state is not preserved if the
- * power is lost.
- *
- * NOTE: The system is still consuming a small amount of power
- *
- * Return value: TRUE if system suspended okay, FALSE other wise.
- *
- * Since: 0.9.0
- **/
-gboolean
-up_client_suspend_sync (UpClient *client, GCancellable *cancellable, GError **error)
-{
-	gboolean ret;
-	GError *error_local = NULL;
-
-	g_return_val_if_fail (UP_IS_CLIENT (client), FALSE);
-	g_return_val_if_fail (client->priv->proxy != NULL, FALSE);
-
-	ret = dbus_g_proxy_call (client->priv->proxy, "Suspend", &error_local,
-				 G_TYPE_INVALID, G_TYPE_INVALID);
-	if (!ret) {
-		/* DBus might time out, which is okay */
-		if (g_error_matches (error_local, DBUS_GERROR, DBUS_GERROR_NO_REPLY)) {
-			g_debug ("DBUS timed out, but recovering");
-			ret = TRUE;
-			goto out;
-		}
-
-		/* an actual error */
-		g_warning ("Couldn't suspend: %s", error_local->message);
-		g_set_error (error, 1, 0, "%s", error_local->message);
-	}
-out:
-	if (error_local != NULL)
-		g_error_free (error_local);
-	return ret;
-}
-
-/**
- * up_client_hibernate_sync:
- * @client: a #UpClient instance.
- * @cancellable: a #GCancellable or %NULL
- * @error: a #GError.
- *
- * Puts the computer into a low power state, where state is preserved if the
- * power is lost.
- *
- * Return value: TRUE if system suspended okay, FALSE other wise.
- *
- * Since: 0.9.0
- **/
-gboolean
-up_client_hibernate_sync (UpClient *client, GCancellable *cancellable, GError **error)
-{
-	gboolean ret;
-	GError *error_local = NULL;
-
-	g_return_val_if_fail (UP_IS_CLIENT (client), FALSE);
-	g_return_val_if_fail (client->priv->proxy != NULL, FALSE);
-
-	ret = dbus_g_proxy_call (client->priv->proxy, "Hibernate", &error_local,
-				 G_TYPE_INVALID, G_TYPE_INVALID);
-	if (!ret) {
-		/* DBus might time out, which is okay */
-		if (g_error_matches (error_local, DBUS_GERROR, DBUS_GERROR_NO_REPLY)) {
-			g_debug ("DBUS timed out, but recovering");
-			ret = TRUE;
-			goto out;
-		}
-
-		/* an actual error */
-		g_warning ("Couldn't hibernate: %s", error_local->message);
-		g_set_error (error, 1, 0, "%s", error_local->message);
-	}
-out:
-	if (error_local != NULL)
-		g_error_free (error_local);
-	return ret;
-}
-
-/**
- * up_client_about_to_sleep_sync:
- * @client: a #UpClient instance.
- * @sleep_kind: a sleep type, e.g. %UP_SLEEP_KIND_SUSPEND
- * @cancellable: a #GCancellable or %NULL
- * @error: a #GError, or %NULL.
- *
- * Tells UPower that we are soon to reqest either Suspend() or Hibernate()
- * and that session and system components should be notified of this.
- *
- * Return value: TRUE if system suspended okay, FALSE other wise.
- *
- * Since: 0.9.11
- **/
-gboolean
-up_client_about_to_sleep_sync (UpClient *client,
-			       UpSleepKind sleep_kind,
-			       GCancellable *cancellable,
-			       GError **error)
-{
-	gboolean ret;
-	GError *error_local = NULL;
-
-	g_return_val_if_fail (UP_IS_CLIENT (client), FALSE);
-	g_return_val_if_fail (client->priv->proxy != NULL, FALSE);
-
-	ret = dbus_g_proxy_call (client->priv->proxy, "AboutToSleep", &error_local,
-				 G_TYPE_STRING, sleep_kind,
-				 G_TYPE_INVALID,
-				 G_TYPE_INVALID);
-	if (!ret) {
-		/* DBus might time out, which is okay */
-		if (g_error_matches (error_local, DBUS_GERROR, DBUS_GERROR_NO_REPLY)) {
-			g_debug ("DBUS timed out, but recovering");
-			ret = TRUE;
-			goto out;
-		}
-
-		/* an actual error */
-		g_warning ("Couldn't sent that we were about to sleep: %s", error_local->message);
-		g_set_error (error, 1, 0, "%s", error_local->message);
-	}
-out:
-	if (error_local != NULL)
-		g_error_free (error_local);
-	return ret;
-}
-
-/**
  * up_client_get_properties_sync:
  * @client: a #UpClient instance.
  * @cancellable: a #GCancellable or %NULL
@@ -317,9 +175,6 @@ up_client_get_properties_sync (UpClient *client, GCancellable *cancellable, GErr
 	gboolean prop_val;
 	GHashTable *props;
 	GValue *value;
-#ifdef ENABLE_DEPRECATED
-	gboolean allowed = FALSE;
-#endif
 
 	props = NULL;
 
@@ -345,41 +200,6 @@ up_client_get_properties_sync (UpClient *client, GCancellable *cancellable, GErr
 	}
 	g_free (client->priv->daemon_version);
 	client->priv->daemon_version = g_strdup (g_value_get_string (value));
-
-#ifdef ENABLE_DEPRECATED
-	value = g_hash_table_lookup (props, "CanSuspend");
-	if (value == NULL) {
-		g_warning ("No 'CanSuspend' property");
-		goto out;
-	}
-	
-	ret = dbus_g_proxy_call (client->priv->proxy, "SuspendAllowed", error,
-		G_TYPE_INVALID, G_TYPE_BOOLEAN, &allowed, G_TYPE_INVALID);
-	if (!ret)
-		goto out;
-
-	prop_val = g_value_get_boolean (value) && allowed;
-	if (prop_val != client->priv->can_suspend) {
-		client->priv->can_suspend = prop_val;
-		g_object_notify (G_OBJECT(client), "can-suspend");
-	}
-
-	value = g_hash_table_lookup (props, "CanHibernate");
-	if (value == NULL) {
-		g_warning ("No 'CanHibernate' property");
-		goto out;
-	}
-	ret = dbus_g_proxy_call (client->priv->proxy, "HibernateAllowed", error,
-		G_TYPE_INVALID, G_TYPE_BOOLEAN, &allowed, G_TYPE_INVALID);
-	if (!ret)
-		goto out;
-
-	prop_val = g_value_get_boolean (value) && allowed;
-	if (prop_val != client->priv->can_hibernate) {
-		client->priv->can_hibernate = prop_val;
-		g_object_notify (G_OBJECT(client), "can-hibernate");
-	}
-#endif /* ENABLE_DEPRECATED */
 
 	value = g_hash_table_lookup (props, "LidIsClosed");
 	if (value == NULL) {
@@ -436,17 +256,6 @@ up_client_get_properties_sync (UpClient *client, GCancellable *cancellable, GErr
 		g_object_notify (G_OBJECT(client), "is-docked");
 	}
 
-	value = g_hash_table_lookup (props, "LidForceSleep");
-	if (value == NULL) {
-		g_warning ("No 'LidForceSleep' property");
-		goto out;
-	}
-	prop_val = g_value_get_boolean (value);
-	if (prop_val != client->priv->lid_force_sleep) {
-		client->priv->lid_force_sleep = prop_val;
-		g_object_notify (G_OBJECT(client), "lid-force-sleep");
-	}
-
 	/* cached */
 	client->priv->have_properties = TRUE;
 
@@ -472,24 +281,6 @@ up_client_get_daemon_version (UpClient *client)
 	g_return_val_if_fail (UP_IS_CLIENT (client), NULL);
 	up_client_get_properties_sync (client, NULL, NULL);
 	return client->priv->daemon_version;
-}
-
-/**
- * up_client_get_can_hibernate:
- * @client: a #UpClient instance.
- *
- * Get whether the system is able to hibernate.
- *
- * Return value: TRUE if system can hibernate, FALSE other wise.
- *
- * Since: 0.9.0
- **/
-gboolean
-up_client_get_can_hibernate (UpClient *client)
-{
-	g_return_val_if_fail (UP_IS_CLIENT (client), FALSE);
-	up_client_get_properties_sync (client, NULL, NULL);
-	return client->priv->can_hibernate;
 }
 
 /**
@@ -529,24 +320,6 @@ up_client_get_lid_is_present (UpClient *client)
 }
 
 /**
- * up_client_get_lid_force_sleep:
- * @client: a #UpClient instance.
- *
- * Get whether the laptop has to sleep when the lid is closed.
- *
- * Return value: %TRUE if the session has to suspend
- *
- * Since: 0.9.9
- */
-gboolean
-up_client_get_lid_force_sleep (UpClient *client)
-{
-	g_return_val_if_fail (UP_IS_CLIENT (client), FALSE);
-	up_client_get_properties_sync (client, NULL, NULL);
-	return client->priv->lid_force_sleep;
-}
-
-/**
  * up_client_get_is_docked:
  * @client: a #UpClient instance.
  *
@@ -562,24 +335,6 @@ up_client_get_is_docked (UpClient *client)
 	g_return_val_if_fail (UP_IS_CLIENT (client), FALSE);
 	up_client_get_properties_sync (client, NULL, NULL);
 	return client->priv->is_docked;
-}
-
-/**
- * up_client_get_can_suspend:
- * @client: a #UpClient instance.
- *
- * Get whether the system is able to suspend.
- *
- * Return value: TRUE if system can suspend, FALSE other wise.
- *
- * Since: 0.9.0
- **/
-gboolean
-up_client_get_can_suspend (UpClient *client)
-{
-	g_return_val_if_fail (UP_IS_CLIENT (client), FALSE);
-	up_client_get_properties_sync (client, NULL, NULL);
-	return client->priv->can_suspend;
 }
 
 /**
@@ -671,26 +426,6 @@ up_device_changed_cb (DBusGProxy *proxy, const gchar *object_path, UpClient *cli
 }
 
 /*
- * up_client_notify_sleep_cb:
- */
-static void
-up_client_notify_sleep_cb (DBusGProxy *proxy, const gchar *sleep_kind, UpClient *client)
-{
-	g_signal_emit (client, signals [UP_CLIENT_NOTIFY_SLEEP], 0,
-		       up_sleep_kind_from_string (sleep_kind));
-}
-
-/*
- * up_client_notify_resume_cb:
- */
-static void
-up_client_notify_resume_cb (DBusGProxy *proxy, const gchar *sleep_kind, UpClient *client)
-{
-	g_signal_emit (client, signals [UP_CLIENT_NOTIFY_RESUME], 0,
-		       up_sleep_kind_from_string (sleep_kind));
-}
-
-/*
  * up_client_removed_cb:
  */
 static void
@@ -729,12 +464,6 @@ up_client_get_property (GObject *object,
 	case PROP_DAEMON_VERSION:
 		g_value_set_string (value, client->priv->daemon_version);
 		break;
-	case PROP_CAN_SUSPEND:
-		g_value_set_boolean (value, client->priv->can_suspend);
-		break;
-	case PROP_CAN_HIBERNATE:
-		g_value_set_boolean (value, client->priv->can_hibernate);
-		break;
 	case PROP_ON_BATTERY:
 		g_value_set_boolean (value, client->priv->on_battery);
 		break;
@@ -746,9 +475,6 @@ up_client_get_property (GObject *object,
 		break;
 	case PROP_LID_IS_PRESENT:
 		g_value_set_boolean (value, client->priv->lid_is_present);
-		break;
-	case PROP_LID_FORCE_SLEEP:
-		g_value_set_boolean (value, client->priv->lid_force_sleep);
 		break;
 	case PROP_IS_DOCKED:
 		g_value_set_boolean (value, client->priv->is_docked);
@@ -785,34 +511,6 @@ up_client_class_init (UpClientClass *klass)
 							      NULL,
 							      NULL,
 							      G_PARAM_READABLE));
-	/**
-	 * UpClient:can-suspend:
-	 *
-	 * If the computer can suspend.
-	 *
-	 * Since: 0.9.0
-	 */
-	g_object_class_install_property (object_class,
-					 PROP_CAN_SUSPEND,
-					 g_param_spec_boolean ("can-suspend",
-							       "If the computer can suspend",
-							       NULL,
-							       FALSE,
-							       G_PARAM_READABLE));
-	/**
-	 * UpClient:can-hibernate:
-	 *
-	 * If the computer can hibernate.
-	 *
-	 * Since: 0.9.0
-	 */
-	g_object_class_install_property (object_class,
-					 PROP_CAN_HIBERNATE,
-					 g_param_spec_boolean ("can-hibernate",
-							       "If the computer can hibernate",
-							       NULL,
-							       FALSE,
-							       G_PARAM_READABLE));
 	/**
 	 * UpClient:on-battery:
 	 *
@@ -866,21 +564,6 @@ up_client_class_init (UpClientClass *klass)
 					 PROP_LID_IS_PRESENT,
 					 g_param_spec_boolean ("lid-is-present",
 							       "If a laptop lid is present",
-							       NULL,
-							       FALSE,
-							       G_PARAM_READABLE));
-
-	/**
-	 * UpClient:lid-force-sleep:
-	 *
-	 * If a laptop has to sleep if the lid is closed.
-	 *
-	 * Since: 0.9.9
-	 */
-	g_object_class_install_property (object_class,
-					 PROP_LID_FORCE_SLEEP,
-					 g_param_spec_boolean ("lid-force-sleep",
-							       "If a laptop has to sleep on lid close",
 							       NULL,
 							       FALSE,
 							       G_PARAM_READABLE));
@@ -962,42 +645,6 @@ up_client_class_init (UpClientClass *klass)
 			      G_STRUCT_OFFSET (UpClientClass, changed),
 			      NULL, NULL, g_cclosure_marshal_VOID__VOID,
 			      G_TYPE_NONE, 0);
-
-	/**
-	 * UpClient::notify-sleep:
-	 * @client: the #UpClient instance that emitted the signal
-	 * @sleep_kind: the #UpSleepKind
-	 *
-	 * The ::notify-sleep signal is emitted when system sleep is
-	 * about to occur. Applications have about 1 second to do
-	 * anything they need to do. There is no way to stop the sleep
-	 * process.
-	 *
-	 * Since: 0.9.11
-	 **/
-	signals [UP_CLIENT_NOTIFY_SLEEP] =
-		g_signal_new ("notify-sleep",
-			      G_TYPE_FROM_CLASS (object_class), G_SIGNAL_RUN_LAST,
-			      G_STRUCT_OFFSET (UpClientClass, notify_sleep),
-			      NULL, NULL, g_cclosure_marshal_VOID__UINT,
-			      G_TYPE_NONE, 1, G_TYPE_UINT);
-
-	/**
-	 * UpClient::notify-resume:
-	 * @client: the #UpClient instance that emitted the signal
-	 * @sleep_kind: the #UpSleepKind
-	 *
-	 * The ::notify-resume signal is emitted when the system has
-	 * resumed.
-	 *
-	 * Since: 0.9.11
-	 **/
-	signals [UP_CLIENT_NOTIFY_RESUME] =
-		g_signal_new ("notify-resume",
-			      G_TYPE_FROM_CLASS (object_class), G_SIGNAL_RUN_LAST,
-			      G_STRUCT_OFFSET (UpClientClass, notify_resume),
-			      NULL, NULL, g_cclosure_marshal_VOID__UINT,
-			      G_TYPE_NONE, 1, G_TYPE_UINT);
 
 	g_type_class_add_private (klass, sizeof (UpClientPrivate));
 }
@@ -1088,8 +735,6 @@ up_client_init (UpClient *client)
 	dbus_g_proxy_add_signal (client->priv->proxy, "DeviceRemoved", G_TYPE_STRING, G_TYPE_INVALID);
 	dbus_g_proxy_add_signal (client->priv->proxy, "DeviceChanged", G_TYPE_STRING, G_TYPE_INVALID);
 	dbus_g_proxy_add_signal (client->priv->proxy, "Changed", G_TYPE_INVALID);
-	dbus_g_proxy_add_signal (client->priv->proxy, "NotifySleep", G_TYPE_STRING, G_TYPE_INVALID);
-	dbus_g_proxy_add_signal (client->priv->proxy, "NotifyResume", G_TYPE_STRING, G_TYPE_INVALID);
 
 	/* all callbacks */
 	dbus_g_proxy_connect_signal (client->priv->proxy, "DeviceAdded",
@@ -1100,10 +745,6 @@ up_client_init (UpClient *client)
 				     G_CALLBACK (up_device_changed_cb), client, NULL);
 	dbus_g_proxy_connect_signal (client->priv->proxy, "Changed",
 				     G_CALLBACK (up_client_changed_cb), client, NULL);
-	dbus_g_proxy_connect_signal (client->priv->proxy, "NotifySleep",
-				     G_CALLBACK (up_client_notify_sleep_cb), client, NULL);
-	dbus_g_proxy_connect_signal (client->priv->proxy, "NotifyResume",
-				     G_CALLBACK (up_client_notify_resume_cb), client, NULL);
 out:
 	return;
 }

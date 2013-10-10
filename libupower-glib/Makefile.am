@@ -5,7 +5,6 @@ AM_CPPFLAGS = \
 	-I$(top_srcdir)						\
 	-I$(top_srcdir)/libupower-glib				\
 	-DUP_COMPILATION					\
-	-DUPOWER_ENABLE_DEPRECATED				\
 	-DG_LOG_DOMAIN=\"libupower-glib\"			\
 	-DPACKAGE_DATA_DIR=\""$(datadir)"\"			\
 	-DPACKAGE_LOCALE_DIR=\""$(prefix)/$(DATADIRNAME)/locale"\"
