@@ -15,7 +15,6 @@ AM_CPPFLAGS = \
 	-DHISTORY_DIR=\""$(historydir)"\"			\
 	-D_POSIX_PTHREAD_SEMANTICS -D_REENTRANT			\
 	-DUP_COMPILATION					\
-	-DUP_DISABLE_DEPRECATED					\
 	-DG_LOG_DOMAIN=\"UPower\"				\
 	-I$(top_srcdir)/libupower-glib				\
 	-I$(top_srcdir)						\
@@ -130,11 +129,6 @@ upowerd_LDFLAGS =						\
 	$(PIE_LDFLAGS)						\
 	$(RELRO_LDFLAGS)
 
-if HAVE_SYSTEMDUTILDIR
-systemsleepdir = $(systemdutildir)/system-sleep
-systemsleep_SCRIPTS = notify-upower.sh
-endif
-
 if UP_BUILD_TESTS
 check-local: upowerd
 	env GI_TYPELIB_PATH=$(top_builddir)/libupower-glib:$(GI_REPOSITORY_PATH) LD_LIBRARY_PATH=$(top_builddir)/libupower-glib/.libs:$(LD_LIBRARY_PATH) top_builddir=$(top_builddir) $(srcdir)/linux/integration-test -v
@@ -233,7 +227,6 @@ EXTRA_DIST =							\
 	org.freedesktop.UPower.KbdBacklight.xml			\
 	org.freedesktop.UPower.Wakeups.xml			\
 	up-marshal.list						\
-	$(systemsleep_SCRIPTS)					\
 	$(systemdservice_in_files)				\
 	$(dbusservice_in_files)					\
 	$(dbusconf_in_files)

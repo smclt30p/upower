@@ -77,8 +77,6 @@ void		 up_daemon_set_lid_is_closed	(UpDaemon		*daemon,
 						 gboolean		 lid_is_closed);
 void		 up_daemon_set_lid_is_present	(UpDaemon		*daemon,
 						 gboolean		 lid_is_present);
-void		 up_daemon_set_lid_force_sleep	(UpDaemon		*daemon,
-						 gboolean		 lid_force_sleep);
 void		 up_daemon_set_is_docked	(UpDaemon		*daemon,
 						 gboolean		 is_docked);
 void		 up_daemon_set_on_battery	(UpDaemon		*daemon,
@@ -92,23 +90,6 @@ gboolean	 up_daemon_enumerate_devices	(UpDaemon		*daemon,
 gboolean	 up_daemon_get_on_battery	(UpDaemon		*daemon,
 						 DBusGMethodInvocation	*context);
 gboolean	 up_daemon_get_low_battery	(UpDaemon		*daemon,
-						 DBusGMethodInvocation	*context);
-gboolean	 up_daemon_suspend		(UpDaemon		*daemon,
-						 DBusGMethodInvocation	*context);
-gboolean	 up_daemon_about_to_sleep	(UpDaemon		*daemon,
-						 const gchar		*sleep_kind,
-						 DBusGMethodInvocation	*context);
-gboolean	 up_daemon_suspend_allowed	(UpDaemon		*daemon,
-						 DBusGMethodInvocation	*context);
-gboolean	 up_daemon_hibernate		(UpDaemon		*daemon,
-						 DBusGMethodInvocation	*context);
-gboolean	 up_daemon_hibernate_allowed	(UpDaemon		*daemon,
-						 DBusGMethodInvocation	*context);
-gboolean	 up_daemon_can_suspend		(UpDaemon		*daemon,
-						 gboolean		 interactive,
-						 DBusGMethodInvocation	*context);
-gboolean	 up_daemon_can_hibernate	(UpDaemon		*daemon,
-						 gboolean		 interactive,
 						 DBusGMethodInvocation	*context);
 
 G_END_DECLS

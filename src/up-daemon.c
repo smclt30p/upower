@@ -46,13 +46,10 @@ enum
 {
 	PROP_0,
 	PROP_DAEMON_VERSION,
-	PROP_CAN_SUSPEND,
-	PROP_CAN_HIBERNATE,
 	PROP_ON_BATTERY,
 	PROP_ON_LOW_BATTERY,
 	PROP_LID_IS_CLOSED,
 	PROP_LID_IS_PRESENT,
-	PROP_LID_FORCE_SLEEP,
 	PROP_IS_DOCKED,
 	PROP_LAST
 };
@@ -63,10 +60,6 @@ enum
 	SIGNAL_DEVICE_REMOVED,
 	SIGNAL_DEVICE_CHANGED,
 	SIGNAL_CHANGED,
-	SIGNAL_SLEEPING,
-	SIGNAL_RESUMING,
-	SIGNAL_NOTIFY_SLEEP,
-	SIGNAL_NOTIFY_RESUME,
 	SIGNAL_LAST,
 };
 
@@ -84,27 +77,10 @@ struct UpDaemonPrivate
 	gboolean		 on_low_battery;
 	gboolean		 lid_is_closed;
 	gboolean		 lid_is_present;
-	gboolean		 lid_force_sleep;
 	gboolean		 is_docked;
-#ifdef ENABLE_DEPRECATED
-	gboolean		 kernel_can_suspend;
-	gboolean		 kernel_can_hibernate;
-	gboolean		 hibernate_has_encrypted_swap;
-#endif
 	gboolean		 during_coldplug;
-#ifdef ENABLE_DEPRECATED
-	gboolean		 sent_sleeping_signal;
-#endif
 	guint			 battery_poll_id;
 	guint			 battery_poll_count;
-#ifdef ENABLE_DEPRECATED
-	GTimer			*about_to_sleep_timer;
-	guint			 about_to_sleep_id;
-	guint			 conf_sleep_timeout;
-	gboolean		 conf_allow_hibernate_encrypted_swap;
-	gboolean		 conf_run_powersave_command;
-#endif
-	const gchar		*sleep_kind;
 };
 
 static void	up_daemon_finalize		(GObject	*object);
@@ -115,12 +91,6 @@ static gboolean	up_daemon_get_on_ac_local 	(UpDaemon	*daemon);
 G_DEFINE_TYPE (UpDaemon, up_daemon, G_TYPE_OBJECT)
 
 #define UP_DAEMON_GET_PRIVATE(o) (G_TYPE_INSTANCE_GET_PRIVATE ((o), UP_TYPE_DAEMON, UpDaemonPrivate))
-
-/* if using more memory compared to usable swap, disable hibernate */
-/* Native Linux suspend-to-disk does not use compression, and needs 2 KB of
- * page meta information for each MB of active memory. Add some error margin
- * here, though. */
-#define UP_DAEMON_SWAP_WATERLINE 			98.f /* % */
 
 /* refresh all the devices after this much time when on-battery has changed */
 #define UP_DAEMON_ON_BATTERY_REFRESH_DEVICES_DELAY	1 /* seconds */
@@ -239,35 +209,6 @@ up_daemon_get_on_ac_local (UpDaemon *daemon)
 	return result;
 }
 
-#ifdef ENABLE_DEPRECATED
-/**
- * up_daemon_set_powersave:
- **/
-static gboolean
-up_daemon_set_powersave (UpDaemon *daemon, gboolean powersave)
-{
-	gboolean ret = FALSE;
-	const gchar *command;
-	GError *error = NULL;
-
-	/* run script */
-	command = up_backend_get_powersave_command (daemon->priv->backend, powersave);
-	if (command == NULL) {
-		g_warning ("no powersave command set");
-		goto out;
-	}
-	g_debug ("excuting command: %s", command);
-	ret = g_spawn_command_line_async (command, &error);
-	if (!ret) {
-		g_warning ("failed to run script: %s", error->message);
-		g_error_free (error);
-		goto out;
-	}
-out:
-	return ret;
-}
-#endif
-
 /**
  * up_daemon_refresh_battery_devices:
  **/
@@ -321,439 +262,6 @@ up_daemon_enumerate_devices (UpDaemon *daemon, DBusGMethodInvocation *context)
 	/* free */
 	g_ptr_array_unref (object_paths);
 	return TRUE;
-}
-
-/**
- * up_daemon_about_to_sleep:
- **/
-gboolean
-up_daemon_about_to_sleep (UpDaemon *daemon,
-			  const gchar *sleep_kind,
-			  DBusGMethodInvocation *context)
-{
-	GError *error;
-#ifdef ENABLE_DEPRECATED
-	PolkitSubject *subject = NULL;
-	UpDaemonPrivate *priv = daemon->priv;
-
-	/* already requested */
-	if (priv->about_to_sleep_id != 0) {
-		error = g_error_new (UP_DAEMON_ERROR,
-				     UP_DAEMON_ERROR_GENERAL,
-				     "Sleep has already been requested and is pending");
-		dbus_g_method_return_error (context, error);
-		g_error_free (error);
-		goto out;
-	}
-
-	subject = up_polkit_get_subject (priv->polkit, context);
-	if (subject == NULL)
-		goto out;
-
-	/* TODO: use another PolicyKit context? */
-	if (!up_polkit_check_auth (priv->polkit, subject, "org.freedesktop.upower.suspend", context))
-		goto out;
-
-	/* we've told the clients we're going down */
-	g_debug ("emitting sleeping");
-	g_signal_emit (daemon, signals[SIGNAL_SLEEPING], 0);
-	g_signal_emit (daemon, signals[SIGNAL_NOTIFY_SLEEP], 0,
-		       sleep_kind);
-	g_timer_start (priv->about_to_sleep_timer);
-	daemon->priv->sent_sleeping_signal = TRUE;
-
-	dbus_g_method_return (context, NULL);
-out:
-	if (subject != NULL)
-		g_object_unref (subject);
-	return TRUE;
-#else
-	/* just return an error */
-	error = g_error_new_literal (UP_DAEMON_ERROR,
-				     UP_DAEMON_ERROR_GENERAL,
-				     "Method is deprecated, please port to org.freedesktop.login1.Manager.Inhibit");
-	dbus_g_method_return_error (context, error);
-	g_error_free (error);
-	return FALSE;
-#endif
-}
-
-/* temp object for deferred callback */
-typedef struct {
-	UpDaemon		*daemon;
-	DBusGMethodInvocation	*context;
-	gchar			*command;
-	gulong			 handler;
-} UpDaemonDeferredSleep;
-
-#ifdef ENABLE_DEPRECATED
-static void
-emit_resuming (UpDaemonDeferredSleep *sleep)
-{
-	UpDaemon *daemon = sleep->daemon;
-	UpDaemonPrivate *priv = daemon->priv;
-
-	/* emit signal for session components */
-	g_debug ("emitting resuming");
-	g_signal_emit (daemon, signals[SIGNAL_RESUMING], 0);
-	g_signal_emit (daemon, signals[SIGNAL_NOTIFY_RESUME], 0,
-		       priv->sleep_kind);
-
-	/* reset the about-to-sleep logic */
-	g_timer_reset (priv->about_to_sleep_timer);
-	g_timer_stop (priv->about_to_sleep_timer);
-
-	/* actually return from the DBus call now */
-	dbus_g_method_return (sleep->context, NULL);
-
-	/* clear timer */
-	priv->about_to_sleep_id = 0;
-	priv->sent_sleeping_signal = FALSE;
-
-	/* delete temp object */
-	if (sleep->handler)
-		g_signal_handler_disconnect (priv->backend, sleep->handler);
-	g_object_unref (sleep->daemon);
-	g_free (sleep->command);
-	g_free (sleep);
-}
-
-/**
- * up_daemon_deferred_sleep_cb:
- **/
-static gboolean
-up_daemon_deferred_sleep_cb (UpDaemonDeferredSleep *sleep)
-{
-	GError *error;
-	GError *error_local = NULL;
-	gchar *stdout = NULL;
-	gchar *stderr = NULL;
-	gboolean ret;
-	UpDaemon *daemon = sleep->daemon;
-	UpDaemonPrivate *priv = daemon->priv;
-
-	if (up_backend_emits_resuming (priv->backend)) {
-		sleep->handler = g_signal_connect_swapped (priv->backend, "resuming",
-							   G_CALLBACK (emit_resuming), sleep);
-	}
-
-	/* run the command */
-	g_debug ("Running %s", sleep->command);
-	ret = g_spawn_command_line_sync (sleep->command, &stdout, &stderr, NULL, &error_local);
-	if (!ret) {
-		error = g_error_new (UP_DAEMON_ERROR,
-				     UP_DAEMON_ERROR_GENERAL,
-				     "Failed to spawn: %s, stdout:%s, stderr:%s", error_local->message, stdout, stderr);
-		g_error_free (error_local);
-		dbus_g_method_return_error (sleep->context, error);
-		g_error_free (error);
-		goto out;
-	}
-
-	if (!up_backend_emits_resuming (priv->backend))
-		emit_resuming (sleep);
-
-out:
-	g_free (stdout);
-	g_free (stderr);
-
-	return FALSE;
-}
-
-/**
- * up_daemon_deferred_sleep:
- **/
-static void
-up_daemon_deferred_sleep (UpDaemon *daemon, const gchar *command, DBusGMethodInvocation *context)
-{
-	UpDaemonDeferredSleep *sleep;
-	UpDaemonPrivate *priv = daemon->priv;
-	gfloat elapsed;
-
-	/* create callback object */
-	sleep = g_new0 (UpDaemonDeferredSleep, 1);
-	sleep->daemon = g_object_ref (daemon);
-	sleep->context = context;
-	sleep->command = g_strdup (command);
-
-	/* we didn't use AboutToSleep() so send the signal for clients now */
-	if (!priv->sent_sleeping_signal) {
-		g_debug ("no AboutToSleep(), so emitting ::Sleeping()");
-		g_signal_emit (daemon, signals[SIGNAL_SLEEPING], 0);
-		g_signal_emit (daemon, signals[SIGNAL_NOTIFY_SLEEP], 0,
-			       priv->sleep_kind);
-		priv->about_to_sleep_id = g_timeout_add (priv->conf_sleep_timeout,
-							 (GSourceFunc) up_daemon_deferred_sleep_cb, sleep);
-#if GLIB_CHECK_VERSION(2,25,8)
-		g_source_set_name_by_id (priv->about_to_sleep_id, "[UpDaemon] about-to-sleep no signal");
-#endif
-		return;
-	}
-
-	/* about to sleep */
-	elapsed = 1000.0f * g_timer_elapsed (priv->about_to_sleep_timer, NULL);
-	g_debug ("between AboutToSleep() and %s was %fms", sleep->command, elapsed);
-	if (elapsed < priv->conf_sleep_timeout) {
-		/* we have to wait for the difference in time */
-		priv->about_to_sleep_id = g_timeout_add (priv->conf_sleep_timeout - elapsed,
-							 (GSourceFunc) up_daemon_deferred_sleep_cb, sleep);
-#if GLIB_CHECK_VERSION(2,25,8)
-		g_source_set_name_by_id (priv->about_to_sleep_id, "[UpDaemon] about-to-sleep less");
-#endif
-	} else {
-		/* we can do this straight away */
-		priv->about_to_sleep_id = g_idle_add ((GSourceFunc) up_daemon_deferred_sleep_cb, sleep);
-#if GLIB_CHECK_VERSION(2,25,8)
-		g_source_set_name_by_id (priv->about_to_sleep_id, "[UpDaemon] about-to-sleep more");
-#endif
-	}
-}
-#endif
-
-/**
- * up_daemon_suspend:
- **/
-gboolean
-up_daemon_suspend (UpDaemon *daemon, DBusGMethodInvocation *context)
-{
-	GError *error;
-#ifdef ENABLE_DEPRECATED
-	PolkitSubject *subject = NULL;
-	const gchar *command;
-	UpDaemonPrivate *priv = daemon->priv;
-
-	/* no kernel support */
-	if (!priv->kernel_can_suspend) {
-		error = g_error_new (UP_DAEMON_ERROR,
-				     UP_DAEMON_ERROR_GENERAL,
-				     "No kernel support");
-		dbus_g_method_return_error (context, error);
-		g_error_free (error);
-		goto out;
-	}
-
-	subject = up_polkit_get_subject (priv->polkit, context);
-	if (subject == NULL)
-		goto out;
-
-	if (!up_polkit_check_auth (priv->polkit, subject, "org.freedesktop.upower.suspend", context))
-		goto out;
-
-	/* already requested */
-	if (priv->about_to_sleep_id != 0) {
-		error = g_error_new (UP_DAEMON_ERROR,
-				     UP_DAEMON_ERROR_GENERAL,
-				     "Sleep has already been requested and is pending");
-		dbus_g_method_return_error (context, error);
-		g_error_free (error);
-		goto out;
-	}
-
-	/* do this deferred action */
-	priv->sleep_kind = "suspend";
-	command = up_backend_get_suspend_command (priv->backend);
-	up_daemon_deferred_sleep (daemon, command, context);
-out:
-	if (subject != NULL)
-		g_object_unref (subject);
-	return TRUE;
-#else
-	/* just return an error */
-	error = g_error_new_literal (UP_DAEMON_ERROR,
-				     UP_DAEMON_ERROR_GENERAL,
-				     "Method is deprecated, please port to org.freedesktop.login1.Manager.Suspend");
-	dbus_g_method_return_error (context, error);
-	g_error_free (error);
-	return FALSE;
-#endif
-}
-
-/**
- * up_daemon_suspend_allowed:
- **/
-gboolean
-up_daemon_suspend_allowed (UpDaemon *daemon, DBusGMethodInvocation *context)
-{
-	GError *error;
-#ifdef ENABLE_DEPRECATED
-	gboolean ret;
-	PolkitSubject *subject = NULL;
-	UpDaemonPrivate *priv = daemon->priv;
-
-	subject = up_polkit_get_subject (priv->polkit, context);
-	if (subject == NULL)
-		goto out;
-
-	error = NULL;
-	ret = up_polkit_is_allowed (priv->polkit, subject, "org.freedesktop.upower.suspend", &error);
-	if (error) {
-		dbus_g_method_return_error (context, error);
-		g_error_free (error);
-	}
-	else {
-		dbus_g_method_return (context, ret);
-	}
-
-out:
-	if (subject != NULL)
-		g_object_unref (subject);
-	return TRUE;
-#else
-	/* just return an error */
-	error = g_error_new_literal (UP_DAEMON_ERROR,
-				     UP_DAEMON_ERROR_GENERAL,
-				     "Method is deprecated, please port to org.freedesktop.login1.Manager.CanSuspend");
-	dbus_g_method_return_error (context, error);
-	g_error_free (error);
-	return FALSE;
-#endif
-}
-
-#ifdef ENABLE_DEPRECATED
-/**
- * up_daemon_check_hibernate_swap:
- *
- * Check current memory usage whether we have enough swap space for
- * hibernate.
- **/
-static gboolean
-up_daemon_check_hibernate_swap (UpDaemon *daemon)
-{
-	gfloat waterline;
-
-	if (daemon->priv->kernel_can_hibernate) {
-		waterline = up_backend_get_used_swap (daemon->priv->backend);
-		if (waterline < UP_DAEMON_SWAP_WATERLINE) {
-			g_debug ("enough swap to for hibernate");
-			return TRUE;
-		} else {
-			g_debug ("not enough swap to hibernate");
-			return FALSE;
-		}
-	}
-
-	return FALSE;
-}
-#endif
-
-/**
- * up_daemon_hibernate:
- **/
-gboolean
-up_daemon_hibernate (UpDaemon *daemon, DBusGMethodInvocation *context)
-{
-	GError *error;
-#ifdef ENABLE_DEPRECATED
-	PolkitSubject *subject = NULL;
-	const gchar *command;
-	UpDaemonPrivate *priv = daemon->priv;
-
-	/* no kernel support */
-	if (!priv->kernel_can_hibernate) {
-		error = g_error_new (UP_DAEMON_ERROR,
-				     UP_DAEMON_ERROR_GENERAL,
-				     "No kernel support");
-		dbus_g_method_return_error (context, error);
-		g_error_free (error);
-		goto out;
-	}
-
-	/* enough swap? */
-	if (!up_daemon_check_hibernate_swap (daemon)) {
-		error = g_error_new (UP_DAEMON_ERROR,
-				     UP_DAEMON_ERROR_GENERAL,
-				     "Not enough swap space");
-		dbus_g_method_return_error (context, error);
-		g_error_free (error);
-		goto out;
-	}
-
-	/* encrypted swap and no override? */
-	if (priv->hibernate_has_encrypted_swap &&
-	    !priv->conf_allow_hibernate_encrypted_swap) {
-		error = g_error_new (UP_DAEMON_ERROR,
-				     UP_DAEMON_ERROR_GENERAL,
-				     "Swap space is encrypted, use AllowHibernateEncryptedSwap to override");
-		dbus_g_method_return_error (context, error);
-		g_error_free (error);
-		goto out;
-	}
-
-	subject = up_polkit_get_subject (priv->polkit, context);
-	if (subject == NULL)
-		goto out;
-
-	if (!up_polkit_check_auth (priv->polkit, subject, "org.freedesktop.upower.hibernate", context))
-		goto out;
-
-	/* already requested */
-	if (priv->about_to_sleep_id != 0) {
-		error = g_error_new (UP_DAEMON_ERROR,
-				     UP_DAEMON_ERROR_GENERAL,
-				     "Sleep has already been requested and is pending");
-		dbus_g_method_return_error (context, error);
-		g_error_free (error);
-		goto out;
-	}
-
-	/* do this deferred action */
-	priv->sleep_kind = "hibernate";
-	command = up_backend_get_hibernate_command (priv->backend);
-	up_daemon_deferred_sleep (daemon, command, context);
-out:
-	if (subject != NULL)
-		g_object_unref (subject);
-	return TRUE;
-#else
-	/* just return an error */
-	error = g_error_new_literal (UP_DAEMON_ERROR,
-				     UP_DAEMON_ERROR_GENERAL,
-				     "Method is deprecated, please port to org.freedesktop.login1.Manager.Hibernate");
-	dbus_g_method_return_error (context, error);
-	g_error_free (error);
-	return FALSE;
-#endif
-}
-
-/**
- * up_daemon_hibernate_allowed:
- **/
-gboolean
-up_daemon_hibernate_allowed (UpDaemon *daemon, DBusGMethodInvocation *context)
-{
-	GError *error;
-#ifdef ENABLE_DEPRECATED
-	gboolean ret;
-	PolkitSubject *subject = NULL;
-	UpDaemonPrivate *priv = daemon->priv;
-
-	subject = up_polkit_get_subject (priv->polkit, context);
-	if (subject == NULL)
-		goto out;
-
-	error = NULL;
-	ret = up_polkit_is_allowed (priv->polkit, subject, "org.freedesktop.upower.hibernate", &error);
-	if (error) {
-		dbus_g_method_return_error (context, error);
-		g_error_free (error);
-	}
-	else {
-		dbus_g_method_return (context, ret);
-	}
-
-out:
-	if (subject != NULL)
-		g_object_unref (subject);
-	return TRUE;
-#else
-	/* just return an error */
-	error = g_error_new_literal (UP_DAEMON_ERROR,
-				     UP_DAEMON_ERROR_GENERAL,
-				     "Method is deprecated, please port to org.freedesktop.login1.Manager.CanHibernate");
-	dbus_g_method_return_error (context, error);
-	g_error_free (error);
-	return FALSE;
-#endif
 }
 
 /**
@@ -834,11 +342,6 @@ up_daemon_startup (UpDaemon *daemon)
 	priv->during_coldplug = FALSE;
 	g_debug ("daemon now not coldplug");
 
-#ifdef ENABLE_DEPRECATED
-	/* set power policy */
-	if (priv->conf_run_powersave_command)
-		up_daemon_set_powersave (daemon, priv->on_battery);
-#endif
 out:
 	return ret;
 }
@@ -869,18 +372,6 @@ up_daemon_set_lid_is_closed (UpDaemon *daemon, gboolean lid_is_closed)
 	g_debug ("lid_is_closed = %s", lid_is_closed ? "yes" : "no");
 	priv->lid_is_closed = lid_is_closed;
 	g_object_notify (G_OBJECT (daemon), "lid-is-closed");
-}
-
-/**
- * up_daemon_set_lid_force_sleep:
- **/
-void
-up_daemon_set_lid_force_sleep (UpDaemon *daemon, gboolean lid_force_sleep)
-{
-	UpDaemonPrivate *priv = daemon->priv;
-	g_debug ("lid_force_sleep = %s", lid_force_sleep ? "yes" : "no");
-	priv->lid_force_sleep = lid_force_sleep;
-	g_object_notify (G_OBJECT (daemon), "lid-enforce-sleep");
 }
 
 /**
@@ -1008,12 +499,6 @@ up_daemon_device_changed_cb (UpDevice *device, UpDaemon *daemon)
 	ret = (up_daemon_get_on_battery_local (daemon) && !up_daemon_get_on_ac_local (daemon));
 	if (ret != priv->on_battery) {
 		up_daemon_set_on_battery (daemon, ret);
-
-#ifdef ENABLE_DEPRECATED
-		/* set power policy */
-		if (priv->conf_run_powersave_command)
-			up_daemon_set_powersave (daemon, ret);
-#endif
 	}
 	ret = up_daemon_get_on_low_battery_local (daemon);
 	if (ret != priv->on_low_battery)
@@ -1155,10 +640,6 @@ up_daemon_init (UpDaemon *daemon)
 	daemon->priv->during_coldplug = FALSE;
 	daemon->priv->battery_poll_id = 0;
 	daemon->priv->battery_poll_count = 0;
-#ifdef ENABLE_DEPRECATED
-	daemon->priv->conf_sleep_timeout = 1000;
-	daemon->priv->conf_run_powersave_command = TRUE;
-#endif
 
 	/* load some values from the config file */
 	file = g_key_file_new ();
@@ -1171,14 +652,7 @@ up_daemon_init (UpDaemon *daemon)
 	}
 	ret = g_key_file_load_from_file (file, filename, G_KEY_FILE_NONE, &error);
 	if (ret) {
-#ifdef ENABLE_DEPRECATED
-		daemon->priv->conf_sleep_timeout =
-			g_key_file_get_integer (file, "UPower", "SleepTimeout", NULL);
-		daemon->priv->conf_allow_hibernate_encrypted_swap =
-			g_key_file_get_boolean (file, "UPower", "AllowHibernateEncryptedSwap", NULL);
-		daemon->priv->conf_run_powersave_command =
-			g_key_file_get_boolean (file, "UPower", "RunPowersaveCommand", NULL);
-#endif
+		/* FIXME: Do something? */
 	} else {
 		g_warning ("failed to load config file %s: %s", filename, error->message);
 		g_error_free (error);
@@ -1192,12 +666,6 @@ up_daemon_init (UpDaemon *daemon)
 	g_signal_connect (daemon->priv->backend, "device-removed",
 			  G_CALLBACK (up_daemon_device_removed_cb), daemon);
 
-	/* use a timer for the about-to-sleep logic */
-#ifdef ENABLE_DEPRECATED
-	daemon->priv->about_to_sleep_timer = g_timer_new ();
-	g_timer_stop (daemon->priv->about_to_sleep_timer);
-#endif
-
 	/* watch when these properties change */
 	g_signal_connect (daemon, "notify::lid-is-present",
 			  G_CALLBACK (up_daemon_properties_changed_cb), daemon);
@@ -1207,16 +675,6 @@ up_daemon_init (UpDaemon *daemon)
 			  G_CALLBACK (up_daemon_properties_changed_cb), daemon);
 	g_signal_connect (daemon, "notify::on-low-battery",
 			  G_CALLBACK (up_daemon_properties_changed_cb), daemon);
-
-	/* check if we have support */
-#ifdef ENABLE_DEPRECATED
-	daemon->priv->kernel_can_suspend = up_backend_kernel_can_suspend (daemon->priv->backend);
-	daemon->priv->kernel_can_hibernate = up_backend_kernel_can_hibernate (daemon->priv->backend);
-
-	/* is the swap usable? */
-	if (daemon->priv->kernel_can_hibernate)
-		daemon->priv->hibernate_has_encrypted_swap = up_backend_has_encrypted_swap (daemon->priv->backend);
-#endif
 }
 
 /**
@@ -1266,23 +724,6 @@ up_daemon_get_property (GObject *object, guint prop_id, GValue *value, GParamSpe
 	case PROP_DAEMON_VERSION:
 		g_value_set_string (value, PACKAGE_VERSION);
 		break;
-	case PROP_CAN_SUSPEND:
-#ifdef ENABLE_DEPRECATED
-		g_value_set_boolean (value, priv->kernel_can_suspend);
-#else
-		g_value_set_boolean (value, FALSE);
-#endif
-		break;
-	case PROP_CAN_HIBERNATE:
-#ifdef ENABLE_DEPRECATED
-		g_value_set_boolean (value, (priv->kernel_can_hibernate &&
-					     up_daemon_check_hibernate_swap (daemon) &&
-					     (!priv->hibernate_has_encrypted_swap ||
-					      priv->conf_allow_hibernate_encrypted_swap)));
-#else
-		g_value_set_boolean (value, FALSE);
-#endif
-		break;
 	case PROP_ON_BATTERY:
 		g_value_set_boolean (value, priv->on_battery);
 		break;
@@ -1294,9 +735,6 @@ up_daemon_get_property (GObject *object, guint prop_id, GValue *value, GParamSpe
 		break;
 	case PROP_LID_IS_PRESENT:
 		g_value_set_boolean (value, priv->lid_is_present);
-		break;
-	case PROP_LID_FORCE_SLEEP:
-		g_value_set_boolean (value, priv->lid_force_sleep);
 		break;
 	case PROP_IS_DOCKED:
 		g_value_set_boolean (value, priv->is_docked);
@@ -1365,38 +803,6 @@ up_daemon_class_init (UpDaemonClass *klass)
 			      g_cclosure_marshal_VOID__VOID,
 			      G_TYPE_NONE, 0);
 
-	signals[SIGNAL_SLEEPING] =
-		g_signal_new ("sleeping",
-			      G_OBJECT_CLASS_TYPE (klass),
-			      G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-			      0, NULL, NULL,
-			      g_cclosure_marshal_VOID__VOID,
-			      G_TYPE_NONE, 0);
-
-	signals[SIGNAL_NOTIFY_SLEEP] =
-		g_signal_new ("notify-sleep",
-			      G_OBJECT_CLASS_TYPE (klass),
-			      G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-			      0, NULL, NULL,
-			      g_cclosure_marshal_VOID__STRING,
-			      G_TYPE_NONE, 1, G_TYPE_STRING);
-
-	signals[SIGNAL_RESUMING] =
-		g_signal_new ("resuming",
-			      G_OBJECT_CLASS_TYPE (klass),
-			      G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-			      0, NULL, NULL,
-			      g_cclosure_marshal_VOID__VOID,
-			      G_TYPE_NONE, 0);
-
-	signals[SIGNAL_NOTIFY_RESUME] =
-		g_signal_new ("notify-resume",
-			      G_OBJECT_CLASS_TYPE (klass),
-			      G_SIGNAL_RUN_LAST | G_SIGNAL_DETAILED,
-			      0, NULL, NULL,
-			      g_cclosure_marshal_VOID__STRING,
-			      G_TYPE_NONE, 1, G_TYPE_STRING);
-
 	g_object_class_install_property (object_class,
 					 PROP_DAEMON_VERSION,
 					 g_param_spec_string ("daemon-version",
@@ -1414,34 +820,10 @@ up_daemon_class_init (UpDaemonClass *klass)
 							       G_PARAM_READABLE));
 
 	g_object_class_install_property (object_class,
-					 PROP_LID_FORCE_SLEEP,
-					 g_param_spec_boolean ("lid-force-sleep",
-							       "Enforce sleep on lid close",
-							       "If this computer has to sleep on lid close",
-							       FALSE,
-							       G_PARAM_READABLE));
-
-	g_object_class_install_property (object_class,
 					 PROP_IS_DOCKED,
 					 g_param_spec_boolean ("is-docked",
 							       "Is docked",
 							       "If this computer is docked",
-							       FALSE,
-							       G_PARAM_READABLE));
-
-	g_object_class_install_property (object_class,
-					 PROP_CAN_SUSPEND,
-					 g_param_spec_boolean ("can-suspend",
-							       "Can Suspend",
-							       "Whether the system can suspend",
-							       FALSE,
-							       G_PARAM_READABLE));
-
-	g_object_class_install_property (object_class,
-					 PROP_CAN_HIBERNATE,
-					 g_param_spec_boolean ("can-hibernate",
-							       "Can Hibernate",
-							       "Whether the system can hibernate",
 							       FALSE,
 							       G_PARAM_READABLE));
 
@@ -1494,9 +876,6 @@ up_daemon_finalize (GObject *object)
 	g_object_unref (priv->polkit);
 	g_object_unref (priv->config);
 	g_object_unref (priv->backend);
-#ifdef ENABLE_DEPRECATED
-	g_timer_destroy (priv->about_to_sleep_timer);
-#endif
 
 	G_OBJECT_CLASS (up_daemon_parent_class)->finalize (object);
 }

@@ -27,10 +27,6 @@
 #include "up-device.h"
 #include <string.h> /* strcmp() */
 
-#define UP_BACKEND_SUSPEND_COMMAND	"/usr/sbin/zzz"
-#define UP_BACKEND_POWERSAVE_TRUE_COMMAND	"/usr/sbin/apm -C"
-#define UP_BACKEND_POWERSAVE_FALSE_COMMAND	"/usr/sbin/apm -A"
-
 static void	up_backend_class_init	(UpBackendClass	*klass);
 static void	up_backend_init	(UpBackend		*backend);
 static void	up_backend_finalize	(GObject		*object);
@@ -175,72 +171,6 @@ up_backend_coldplug (UpBackend *backend, UpDaemon *daemon)
 	return TRUE;
 }
 
-
-/**
- * up_backend_get_powersave_command:
- **/
-const gchar *
-up_backend_get_powersave_command (UpBackend *backend, gboolean powersave)
-{
-	if (powersave)
-		return UP_BACKEND_POWERSAVE_TRUE_COMMAND;
-	return UP_BACKEND_POWERSAVE_FALSE_COMMAND;
-}
-
-/**
- * up_backend_get_suspend_command:
- **/
-const gchar *
-up_backend_get_suspend_command (UpBackend *backend)
-{
-	return UP_BACKEND_SUSPEND_COMMAND;
-}
-
-/**
- * up_backend_get_hibernate_command:
- **/
-const gchar *
-up_backend_get_hibernate_command (UpBackend *backend)
-{
-	return NULL;
-}
-
-gboolean
-up_backend_emits_resuming (UpBackend *backend)
-{
-	return FALSE;
-}
-
-/**
- * up_backend_kernel_can_suspend:
- **/
-gboolean
-up_backend_kernel_can_suspend (UpBackend *backend)
-{
-	return TRUE;
-}
-
-/**
- * up_backend_kernel_can_hibernate:
- **/
-gboolean
-up_backend_kernel_can_hibernate (UpBackend *backend)
-{
-	return FALSE;
-}
-
-gboolean
-up_backend_has_encrypted_swap (UpBackend *backend)
-{
-	return FALSE;
-}
-
-/* Return value: a percentage value */
-gfloat
-up_backend_get_used_swap (UpBackend *backend)
-{
-	return 0;
-}
 
 /**
  * OpenBSD specific code

@@ -49,15 +49,6 @@
 #include <dbus/dbus-glib.h>
 #include <dbus/dbus-glib-lowlevel.h>
 
-#ifdef ENABLE_DEPRECATED
-
-#define LOGIND_AVAILABLE() (access("/run/systemd/seats/", F_OK) >= 0)
-
-#define SD_HIBERNATE_COMMAND	"gdbus call --system --dest org.freedesktop.login1 --object-path /org/freedesktop/login1 --method org.freedesktop.login1.Manager.Hibernate 'true'"
-#define SD_SUSPEND_COMMAND	"gdbus call --system --dest org.freedesktop.login1 --object-path /org/freedesktop/login1 --method org.freedesktop.login1.Manager.Suspend 'true'"
-
-#endif
-
 static void	up_backend_class_init	(UpBackendClass	*klass);
 static void	up_backend_init	(UpBackend		*backend);
 static void	up_backend_finalize	(GObject		*object);
@@ -78,9 +69,6 @@ struct UpBackendPrivate
 enum {
 	SIGNAL_DEVICE_ADDED,
 	SIGNAL_DEVICE_REMOVED,
-#ifdef ENABLE_DEPRECATED
-	SIGNAL_RESUMING,
-#endif
 	SIGNAL_LAST
 };
 
@@ -90,13 +78,6 @@ G_DEFINE_TYPE (UpBackend, up_backend, G_TYPE_OBJECT)
 
 static gboolean up_backend_device_add (UpBackend *backend, GUdevDevice *native);
 static void up_backend_device_remove (UpBackend *backend, GUdevDevice *native);
-
-#ifdef ENABLE_DEPRECATED
-#define UP_BACKEND_SUSPEND_COMMAND		"/usr/sbin/pm-suspend"
-#define UP_BACKEND_HIBERNATE_COMMAND		"/usr/sbin/pm-hibernate"
-#define UP_BACKEND_POWERSAVE_TRUE_COMMAND	"/usr/sbin/pm-powersave true"
-#define UP_BACKEND_POWERSAVE_FALSE_COMMAND	"/usr/sbin/pm-powersave false"
-#endif
 
 /**
  * up_backend_device_new:
@@ -367,273 +348,6 @@ up_backend_coldplug (UpBackend *backend, UpDaemon *daemon)
 	return TRUE;
 }
 
-#ifdef ENABLE_DEPRECATED
-/**
- * up_backend_supports_sleep_state:
- *
- * use pm-is-supported to test for supported sleep states
- **/
-static gboolean
-up_backend_supports_sleep_state (const gchar *state)
-{
-	gboolean ret = FALSE;
-	gchar *command;
-	GError *error = NULL;
-	gint exit_status;
-
-	/* run script from pm-utils */
-	command = g_strdup_printf ("/usr/bin/pm-is-supported --%s", state);
-	g_debug ("excuting command: %s", command);
-	ret = g_spawn_command_line_sync (command, NULL, NULL, &exit_status, &error);
-	if (!ret) {
-		g_warning ("failed to run script: %s", error->message);
-		g_error_free (error);
-		goto out;
-	}
-	ret = (WIFEXITED(exit_status) && (WEXITSTATUS(exit_status) == EXIT_SUCCESS));
-
-out:
-	g_free (command);
-	return ret;
-}
-
-/**
- * up_backend_kernel_can_suspend:
- **/
-gboolean
-up_backend_kernel_can_suspend (UpBackend *backend)
-{
-	return up_backend_supports_sleep_state ("suspend");
-}
-
-/**
- * up_backend_kernel_can_hibernate:
- **/
-gboolean
-up_backend_kernel_can_hibernate (UpBackend *backend)
-{
-	return up_backend_supports_sleep_state ("hibernate");
-}
-
-/**
- * up_backend_has_encrypted_swap:
- *
- * user@local:~$ cat /proc/swaps
- * Filename                                Type            Size    Used    Priority
- * /dev/mapper/cryptswap1                  partition       4803392 35872   -1
- *
- * user@local:~$ cat /etc/crypttab
- * # <target name> <source device>         <key file>      <options>
- * cryptswap1 /dev/sda5 /dev/urandom swap,cipher=aes-cbc-essiv:sha256
- *
- * Loop over the swap partitions in /proc/swaps, looking for matches in /etc/crypttab
- **/
-gboolean
-up_backend_has_encrypted_swap (UpBackend *backend)
-{
-	gchar *contents_swaps = NULL;
-	gchar *contents_crypttab = NULL;
-	gchar **lines_swaps = NULL;
-	gchar **lines_crypttab = NULL;
-	GError *error = NULL;
-	gboolean ret;
-	gboolean encrypted_swap = FALSE;
-	const gchar *filename_swaps = "/proc/swaps";
-	const gchar *filename_crypttab = "/etc/crypttab";
-	GPtrArray *devices = NULL;
-	gchar *device;
-	guint i, j;
-
-	/* get swaps data */
-	ret = g_file_get_contents (filename_swaps, &contents_swaps, NULL, &error);
-	if (!ret) {
-		g_warning ("failed to open %s: %s", filename_swaps, error->message);
-		g_error_free (error);
-		goto out;
-	}
-
-	/* get crypttab data */
-	ret = g_file_get_contents (filename_crypttab, &contents_crypttab, NULL, &error);
-	if (!ret) {
-		if (error->code != G_FILE_ERROR_NOENT) {
-			g_warning ("failed to open %s: %s", filename_crypttab, error->message);
-		}
-		g_error_free (error);
-		goto out;
-	}
-
-	/* split both into lines */
-	lines_swaps = g_strsplit (contents_swaps, "\n", -1);
-	lines_crypttab = g_strsplit (contents_crypttab, "\n", -1);
-
-	/* get valid swap devices */
-	devices = g_ptr_array_new_with_free_func (g_free);
-	for (i=0; lines_swaps[i] != NULL; i++) {
-
-		/* is a device? */
-		if (lines_swaps[i][0] != '/')
-			continue;
-
-		/* only look at first parameter */
-		g_strdelimit (lines_swaps[i], "\t ", '\0');
-
-		/* add base device to list */
-		device = g_path_get_basename (lines_swaps[i]);
-		g_debug ("adding swap device: %s", device);
-		g_ptr_array_add (devices, device);
-	}
-
-	/* no swap devices? */
-	if (devices->len == 0) {
-		g_debug ("no swap devices");
-		goto out;
-	}
-
-	/* find matches in crypttab */
-	for (i=0; lines_crypttab[i] != NULL; i++) {
-
-		/* ignore invalid lines */
-		if (lines_crypttab[i][0] == '#' ||
-		    lines_crypttab[i][0] == '\n' ||
-		    lines_crypttab[i][0] == '\t' ||
-		    lines_crypttab[i][0] == '\0')
-			continue;
-
-		/* only look at first parameter */
-		g_strdelimit (lines_crypttab[i], "\t ", '\0');
-
-		/* is a swap device? */
-		for (j=0; j<devices->len; j++) {
-			device = g_ptr_array_index (devices, j);
-			if (g_strcmp0 (device, lines_crypttab[i]) == 0) {
-				g_debug ("swap device %s is encrypted (so cannot hibernate)", device);
-				encrypted_swap = TRUE;
-				goto out;
-			}
-			g_debug ("swap device %s is not encrypted (allows hibernate)", device);
-		}
-	}
-
-out:
-	if (devices != NULL)
-		g_ptr_array_unref (devices);
-	g_free (contents_swaps);
-	g_free (contents_crypttab);
-	g_strfreev (lines_swaps);
-	g_strfreev (lines_crypttab);
-	return encrypted_swap;
-}
-
-/**
- * up_backend_get_used_swap:
- *
- * Return value: a percentage value how much of the available swap memory would
- * be taken by currently active memory
- **/
-gfloat
-up_backend_get_used_swap (UpBackend *backend)
-{
-	gchar *contents = NULL;
-	gchar **lines = NULL;
-	GError *error = NULL;
-	gchar **tokens;
-	gboolean ret;
-	guint active = 0;
-	guint swap_free = 0;
-	guint swap_total = 0;
-	guint len;
-	guint i;
-	gfloat percentage = 0.0f;
-	const gchar *filename = "/proc/meminfo";
-
-	/* get memory data */
-	ret = g_file_get_contents (filename, &contents, NULL, &error);
-	if (!ret) {
-		g_warning ("failed to open %s: %s", filename, error->message);
-		g_error_free (error);
-		goto out;
-	}
-
-	/* process each line */
-	lines = g_strsplit (contents, "\n", -1);
-	for (i=1; lines[i] != NULL; i++) {
-		tokens = g_strsplit_set (lines[i], ": ", -1);
-		len = g_strv_length (tokens);
-		if (len > 3) {
-			if (g_strcmp0 (tokens[0], "SwapFree") == 0)
-				swap_free = atoi (tokens[len-2]);
-			if (g_strcmp0 (tokens[0], "SwapTotal") == 0)
-				swap_total = atoi (tokens[len-2]);
-			else if (g_strcmp0 (tokens[0], "Active(anon)") == 0)
-				active = atoi (tokens[len-2]);
-		}
-		g_strfreev (tokens);
-	}
-
-	/* first check if we even have swap, if not consider all swap space used */
-	if (swap_total == 0) {
-		g_debug ("no swap space found");
-		percentage = 100.0f;
-		goto out;
-	}
-
-	/* work out how close to the line we are */
-	if (swap_free > 0 && active > 0)
-		percentage = (active * 100) / swap_free;
-	g_debug ("total swap available %i kb, active memory %i kb (%.1f%%)", swap_free, active, percentage);
-out:
-	g_free (contents);
-	g_strfreev (lines);
-	return percentage;
-}
-
-/**
- * up_backend_get_suspend_command:
- **/
-const gchar *
-up_backend_get_suspend_command (UpBackend *backend)
-{
-	if (LOGIND_AVAILABLE())
-		return SD_SUSPEND_COMMAND;
-	else
-		return UP_BACKEND_SUSPEND_COMMAND;
-}
-
-/**
- * up_backend_get_hibernate_command:
- **/
-const gchar *
-up_backend_get_hibernate_command (UpBackend *backend)
-{
-	if (LOGIND_AVAILABLE())
-		return SD_HIBERNATE_COMMAND;
-	else
-		return UP_BACKEND_HIBERNATE_COMMAND;
-}
-
-gboolean
-up_backend_emits_resuming (UpBackend *backend)
-{
-	if (LOGIND_AVAILABLE())
-		return TRUE;
-	else
-		return FALSE;
-}
-#endif
-
-#ifdef ENABLE_DEPRECATED
-/**
- * up_backend_get_powersave_command:
- **/
-const gchar *
-up_backend_get_powersave_command (UpBackend *backend, gboolean powersave)
-{
-	if (powersave)
-		return UP_BACKEND_POWERSAVE_TRUE_COMMAND;
-	return UP_BACKEND_POWERSAVE_FALSE_COMMAND;
-}
-#endif
-
 /**
  * up_backend_class_init:
  * @klass: The UpBackendClass
@@ -656,34 +370,9 @@ up_backend_class_init (UpBackendClass *klass)
 			      G_STRUCT_OFFSET (UpBackendClass, device_removed),
 			      NULL, NULL, up_marshal_VOID__POINTER_POINTER,
 			      G_TYPE_NONE, 2, G_TYPE_POINTER, G_TYPE_POINTER);
-#ifdef ENABLE_DEPRECATED
-	signals [SIGNAL_RESUMING] =
-		g_signal_new ("resuming",
-			      G_TYPE_FROM_CLASS (object_class), G_SIGNAL_RUN_LAST,
-			      G_STRUCT_OFFSET (UpBackendClass, resuming),
-			      NULL, NULL, g_cclosure_marshal_VOID__VOID,
-			      G_TYPE_NONE, 0);
-#endif
 
 	g_type_class_add_private (klass, sizeof (UpBackendPrivate));
 }
-
-#ifdef ENABLE_DEPRECATED
-static DBusHandlerResult
-message_filter (DBusConnection *connection,
-		DBusMessage *message,
-		void *user_data)
-{
-	UpBackend *backend = user_data;
-
-	if (dbus_message_is_signal (message, "org.freedesktop.UPower", "Resuming")) {
-		g_debug ("received Resuming signal");
-		g_signal_emit (backend, signals[SIGNAL_RESUMING], 0);
-		return DBUS_HANDLER_RESULT_HANDLED;
-	}
-	return DBUS_HANDLER_RESULT_NOT_YET_HANDLED;
-}
-#endif
 
 /**
  * up_backend_init:
@@ -696,15 +385,6 @@ up_backend_init (UpBackend *backend)
 	backend->priv->daemon = NULL;
 	backend->priv->device_list = NULL;
 	backend->priv->managed_devices = up_device_list_new ();
-
-#ifdef ENABLE_DEPRECATED
-	if (LOGIND_AVAILABLE()) {
-		DBusGConnection *bus;
-		bus = dbus_g_bus_get (DBUS_BUS_SYSTEM, NULL);
-		backend->priv->connection = dbus_g_connection_get_connection (bus);
-		dbus_connection_add_filter (backend->priv->connection, message_filter, backend, NULL);
-	}
-#endif
 }
 
 /**
@@ -728,11 +408,6 @@ up_backend_finalize (GObject *object)
 		g_object_unref (backend->priv->gudev_client);
 
 	g_object_unref (backend->priv->managed_devices);
-
-#ifdef ENABLE_DEPRECATED
-	if (backend->priv->connection)
-		dbus_connection_remove_filter (backend->priv->connection, message_filter, backend);
-#endif
 
 	G_OBJECT_CLASS (up_backend_parent_class)->finalize (object);
 }

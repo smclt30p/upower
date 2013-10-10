@@ -33,7 +33,6 @@ struct UpDockPrivate
 	UpDaemon		*daemon;
 	GUdevClient		*gudev_client;
 	guint			 poll_id;
-	guint                    notify_resume_id;
 };
 
 G_DEFINE_TYPE (UpDock, up_dock, G_TYPE_OBJECT)
@@ -121,17 +120,6 @@ up_dock_set_should_poll (UpDock *dock, gboolean should_poll)
 }
 
 /**
- * up_dock_notify_resume_cb
- */
-static void
-up_dock_notify_resume_cb (UpDaemon *daemon,
-			  const gchar *sleep_kind,
-			  UpDock *dock)
-{
-	up_dock_refresh (dock);
-}
-
-/**
  * up_dock_coldplug:
  **/
 gboolean
@@ -139,9 +127,6 @@ up_dock_coldplug (UpDock *dock, UpDaemon *daemon)
 {
 	/* save daemon */
 	dock->priv->daemon = g_object_ref (daemon);
-	dock->priv->notify_resume_id = g_signal_connect (dock->priv->daemon, "notify-resume",
-							 G_CALLBACK (up_dock_notify_resume_cb),
-							 dock);
 	return up_dock_refresh (dock);
 }
 
@@ -185,8 +170,6 @@ up_dock_finalize (GObject *object)
 	g_return_if_fail (dock->priv != NULL);
 
 	g_object_unref (dock->priv->gudev_client);
-	if (dock->priv->notify_resume_id != 0)
-		g_signal_handler_disconnect (dock->priv->daemon, dock->priv->notify_resume_id);
 	if (dock->priv->daemon != NULL)
 		g_object_unref (dock->priv->daemon);
 	if (dock->priv->poll_id != 0)
