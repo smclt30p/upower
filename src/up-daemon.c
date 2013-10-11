@@ -886,8 +886,6 @@ up_daemon_finalize (GObject *object)
 UpDaemon *
 up_daemon_new (void)
 {
-	UpDaemon *daemon;
-	daemon = UP_DAEMON (g_object_new (UP_TYPE_DAEMON, NULL));
-	return daemon;
+	return UP_DAEMON (g_object_new (UP_TYPE_DAEMON, NULL));
 }
 

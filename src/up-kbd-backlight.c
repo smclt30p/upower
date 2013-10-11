@@ -311,8 +311,6 @@ up_kbd_backlight_finalize (GObject *object)
 UpKbdBacklight *
 up_kbd_backlight_new (void)
 {
-	UpKbdBacklight *kbd_backlight;
-	kbd_backlight = g_object_new (UP_TYPE_KBD_BACKLIGHT, NULL);
-	return UP_KBD_BACKLIGHT (kbd_backlight);
+	return g_object_new (UP_TYPE_KBD_BACKLIGHT, NULL);
 }
 

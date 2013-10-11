@@ -420,8 +420,6 @@ up_backend_finalize (GObject *object)
 UpBackend *
 up_backend_new (void)
 {
-	UpBackend *backend;
-	backend = g_object_new (UP_TYPE_BACKEND, NULL);
-	return UP_BACKEND (backend);
+	return g_object_new (UP_TYPE_BACKEND, NULL);
 }
 

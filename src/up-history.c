@@ -937,8 +937,6 @@ up_history_finalize (GObject *object)
 UpHistory *
 up_history_new (void)
 {
-	UpHistory *history;
-	history = g_object_new (UP_TYPE_HISTORY, NULL);
-	return UP_HISTORY (history);
+	return g_object_new (UP_TYPE_HISTORY, NULL);
 }
 

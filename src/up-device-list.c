@@ -194,8 +194,6 @@ up_device_list_finalize (GObject *object)
 UpDeviceList *
 up_device_list_new (void)
 {
-	UpDeviceList *list;
-	list = g_object_new (UP_TYPE_DEVICE_LIST, NULL);
-	return UP_DEVICE_LIST (list);
+	return g_object_new (UP_TYPE_DEVICE_LIST, NULL);
 }
 
