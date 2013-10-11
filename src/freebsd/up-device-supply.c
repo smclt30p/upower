@@ -497,22 +497,6 @@ up_device_supply_init (UpDeviceSupply *supply)
 }
 
 /**
- * up_device_supply_finalize:
- **/
-static void
-up_device_supply_finalize (GObject *object)
-{
-	UpDeviceSupply *supply;
-
-	g_return_if_fail (object != NULL);
-	g_return_if_fail (UP_IS_DEVICE_SUPPLY (object));
-
-	supply = UP_DEVICE_SUPPLY (object);
-
-	G_OBJECT_CLASS (up_device_supply_parent_class)->finalize (object);
-}
-
-/**
  * up_device_supply_class_init:
  **/
 static void
@@ -521,7 +505,6 @@ up_device_supply_class_init (UpDeviceSupplyClass *klass)
 	GObjectClass *object_class = G_OBJECT_CLASS (klass);
 	UpDeviceClass *device_class = UP_DEVICE_CLASS (klass);
 
-	object_class->finalize = up_device_supply_finalize;
 	device_class->get_on_battery = up_device_supply_get_on_battery;
 	device_class->get_low_battery = up_device_supply_get_low_battery;
 	device_class->get_online = up_device_supply_get_online;
