@@ -301,9 +301,7 @@ up_device_csr_init (UpDeviceCsr *csr)
 	gint retval;
 	csr->priv = UP_DEVICE_CSR_GET_PRIVATE (csr);
 
-	csr->priv->is_dual = FALSE;
 	csr->priv->raw_value = -1;
-	csr->priv->poll_timer_id = 0;
 	retval = libusb_init (&csr->priv->ctx);
 	if (retval < 0)
 		g_warning ("could not initialize libusb: %i", retval);

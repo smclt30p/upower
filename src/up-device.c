@@ -862,13 +862,6 @@ up_device_init (UpDevice *device)
 	GError *error = NULL;
 
 	device->priv = UP_DEVICE_GET_PRIVATE (device);
-	device->priv->object_path = NULL;
-	device->priv->system_bus_connection = NULL;
-	device->priv->system_bus_proxy = NULL;
-	device->priv->daemon = NULL;
-	device->priv->native = NULL;
-	device->priv->has_ever_refresh = FALSE;
-	device->priv->during_coldplug = FALSE;
 	device->priv->history = up_history_new ();
 
 	device->priv->system_bus_connection = dbus_g_bus_get (DBUS_BUS_SYSTEM, &error);

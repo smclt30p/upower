@@ -312,7 +312,6 @@ static void
 up_device_unifying_init (UpDeviceUnifying *unifying)
 {
 	unifying->priv = UP_DEVICE_UNIFYING_GET_PRIVATE (unifying);
-	unifying->priv->poll_timer_id = 0;
 }
 
 /**

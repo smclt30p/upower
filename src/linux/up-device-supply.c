@@ -1056,14 +1056,11 @@ static void
 up_device_supply_init (UpDeviceSupply *supply)
 {
 	supply->priv = UP_DEVICE_SUPPLY_GET_PRIVATE (supply);
-	supply->priv->unknown_retries = 0;
-	supply->priv->poll_timer_id = 0;
 	supply->priv->enable_poll = TRUE;
 
 	/* allocate the stats for the battery charging & discharging */
 	supply->priv->energy_old = g_new (gdouble, UP_DEVICE_SUPPLY_ENERGY_OLD_LENGTH);
 	supply->priv->energy_old_timespec = g_new (GTimeVal, UP_DEVICE_SUPPLY_ENERGY_OLD_LENGTH);
-	supply->priv->energy_old_first = 0;
 
 	supply->priv->shown_invalid_voltage_warning = FALSE;
 }

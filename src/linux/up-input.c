@@ -269,8 +269,6 @@ up_input_init (UpInput *input)
 {
 	input->priv = UP_INPUT_GET_PRIVATE (input);
 	input->priv->eventfp = -1;
-	input->priv->channel = NULL;
-	input->priv->daemon = NULL;
 }
 
 /**

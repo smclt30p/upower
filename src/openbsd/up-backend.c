@@ -467,7 +467,6 @@ up_backend_init (UpBackend *backend)
 	UpDeviceClass *device_class;
 
 	backend->priv = UP_BACKEND_GET_PRIVATE (backend);
-	backend->priv->daemon = NULL;
 	backend->priv->is_laptop = up_native_is_laptop();
 	g_debug("is_laptop:%d",backend->priv->is_laptop);
 	if (backend->priv->is_laptop)
@@ -510,9 +509,6 @@ up_backend_init (UpBackend *backend)
 			      "power-supply", TRUE,
 			      "update-time", (guint64) timeval.tv_sec,
 			      (void*) NULL);
-	} else {
-		backend->priv->ac = NULL;
-		backend->priv->battery = NULL;
 	}
 }
 /**

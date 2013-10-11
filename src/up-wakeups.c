@@ -736,12 +736,6 @@ up_wakeups_init (UpWakeups *wakeups)
 
 	wakeups->priv = UP_WAKEUPS_GET_PRIVATE (wakeups);
 	wakeups->priv->data = g_ptr_array_new_with_free_func ((GDestroyNotify) g_object_unref);
-	wakeups->priv->total_old = 0;
-	wakeups->priv->total_ave = 0;
-	wakeups->priv->poll_userspace_id = 0;
-	wakeups->priv->poll_kernel_id = 0;
-	wakeups->priv->has_capability = FALSE;
-	wakeups->priv->polling_enabled = FALSE;
 
 	wakeups->priv->connection = dbus_g_bus_get (DBUS_BUS_SYSTEM, &error);
 	if (error != NULL) {

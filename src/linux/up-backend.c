@@ -382,8 +382,6 @@ up_backend_init (UpBackend *backend)
 {
 	backend->priv = UP_BACKEND_GET_PRIVATE (backend);
 	backend->priv->config = up_config_new ();
-	backend->priv->daemon = NULL;
-	backend->priv->device_list = NULL;
 	backend->priv->managed_devices = up_device_list_new ();
 }
 

@@ -1023,13 +1023,10 @@ hidpp_device_init (HidppDevice *device)
 	HidppDeviceMap *map;
 
 	device->priv = HIDPP_DEVICE_GET_PRIVATE (device);
-	device->priv->is_present = FALSE;
 	device->priv->fd = -1;
 	device->priv->feature_index = g_ptr_array_new_with_free_func (g_free);
 	device->priv->batt_status = HIDPP_DEVICE_BATT_STATUS_UNKNOWN;
-	device->priv->batt_is_approx = FALSE;
 	device->priv->kind = HIDPP_DEVICE_KIND_UNKNOWN;
-	device->priv->serial = NULL;
 	device->priv->lux = -1;
 
 	/* add known root */

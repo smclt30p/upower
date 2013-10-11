@@ -363,10 +363,7 @@ static void
 up_backend_init (UpBackend *backend)
 {
 	backend->priv = UP_BACKEND_GET_PRIVATE (backend);
-	backend->priv->daemon = NULL;
-	backend->priv->device_list = NULL;
 	backend->priv->handle_map = g_hash_table_new_full (g_str_hash, g_str_equal, (GDestroyNotify) g_free, (GDestroyNotify) g_object_unref);
-	backend->priv->poll_timer_id = 0;
 }
 
 /**

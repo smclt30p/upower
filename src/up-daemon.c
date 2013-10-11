@@ -631,15 +631,7 @@ up_daemon_init (UpDaemon *daemon)
 	daemon->priv = UP_DAEMON_GET_PRIVATE (daemon);
 	daemon->priv->polkit = up_polkit_new ();
 	daemon->priv->config = up_config_new ();
-	daemon->priv->lid_is_present = FALSE;
-	daemon->priv->is_docked = FALSE;
-	daemon->priv->lid_is_closed = FALSE;
 	daemon->priv->power_devices = up_device_list_new ();
-	daemon->priv->on_battery = FALSE;
-	daemon->priv->on_low_battery = FALSE;
-	daemon->priv->during_coldplug = FALSE;
-	daemon->priv->battery_poll_id = 0;
-	daemon->priv->battery_poll_count = 0;
 
 	/* load some values from the config file */
 	file = g_key_file_new ();
