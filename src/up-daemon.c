@@ -160,6 +160,7 @@ up_daemon_update_display_battery (UpDaemon *daemon)
 	gint64 time_to_empty_total = 0;
 	gint64 time_to_full_total = 0;
 	gboolean is_present_total = FALSE;
+	guint num_pending = 0;
 	guint num_batteries = 0;
 
 	/* Gather state from each device */
@@ -221,6 +222,8 @@ up_daemon_update_display_battery (UpDaemon *daemon)
 		else if (state == UP_DEVICE_STATE_FULLY_CHARGED &&
 			 state_total == UP_DEVICE_STATE_UNKNOWN)
 			state_total = UP_DEVICE_STATE_FULLY_CHARGED;
+		else if (state == UP_DEVICE_STATE_PENDING_CHARGE)
+			num_pending++;
 
 		/* sum up composite */
 		kind_total = UP_DEVICE_KIND_BATTERY;
@@ -233,6 +236,22 @@ up_daemon_update_display_battery (UpDaemon *daemon)
 		/* Will be recalculated for multiple batteries, no worries */
 		percentage_total += percentage;
 		num_batteries++;
+	}
+
+	/* The display battery has an unknown state (Usually ThinkPads on Linux 4.17 with
+	 * the battery charge threshold states set). */
+	if (num_batteries > 0 && state_total == UP_DEVICE_STATE_UNKNOWN) {
+		/* If all batteries are pending a charge, return the total state
+		 * as "fully charging". We return that all are fully charged because
+		 * if a battery is pending a charge, it has been fully charged up to
+		 * its threshold and is in idle. We could return "pending charge" here
+		 * but that is too complicated for the display battery */
+		if (num_pending == num_batteries)
+			state_total = UP_DEVICE_STATE_FULLY_CHARGED;
+		/* Else if there is one battery that is pending but one battery is not,
+		 * we will return "charging" as the other is charging. */
+		else if (num_pending > 0)
+			state_total = UP_DEVICE_STATE_CHARGING;
 	}
 
 	/* Handle multiple batteries */
