@@ -269,7 +269,7 @@ up_device_idevice_refresh (UpDevice *device)
 	lockdownd_client_t client = NULL;
 	plist_t dict, node;
 	guint64 percentage;
-	guint8 charging;
+	guint8 charging, has_battery;
 	UpDeviceState state;
 	gboolean retval = FALSE;
 
@@ -284,6 +284,15 @@ up_device_idevice_refresh (UpDevice *device)
 	if (lockdownd_get_value (client, "com.apple.mobile.battery", NULL, &dict) != LOCKDOWN_E_SUCCESS)
 		goto out;
 
+	node = plist_dict_get_item (dict, "HasBattery");
+	if (node) {
+		plist_get_bool_val (node, &has_battery);
+		if (!has_battery) {
+			plist_free(dict);
+			goto out;
+		}
+	}
+
 	/* get battery status */
 	node = plist_dict_get_item (dict, "BatteryCurrentCapacity");
 	if (!node) {
@@ -297,6 +306,10 @@ up_device_idevice_refresh (UpDevice *device)
 
 	/* get charging status */
 	node = plist_dict_get_item (dict, "BatteryIsCharging");
+	if (!node) {
+		plist_free(dict);
+		goto out;
+	}
 	plist_get_bool_val (node, &charging);
 
 	if (percentage == 100)
